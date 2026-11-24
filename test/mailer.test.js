@@ -27,6 +27,17 @@ test('no logo → emoji header and no attachments', () => {
   assert.ok(mail.html.includes('🎄🎁🎅'));
 });
 
+test('every email is unique, so Gmail never hides repeated parts behind "•••"', () => {
+  const a = mailer.composeEmail('Reminder', 'Same text');
+  const b = mailer.composeEmail('Reminder', 'Same text');
+  assert.notEqual(a.html, b.html);
+  assert.match(a.headers['X-Entity-Ref-ID'], /^[0-9a-f]{12}$/);
+  assert.notEqual(a.headers['X-Entity-Ref-ID'], b.headers['X-Entity-Ref-ID']);
+  // the marker sits in the header and the footer, and is invisible
+  assert.equal(a.html.split(a.headers['X-Entity-Ref-ID']).length - 1, 2);
+  assert.match(a.html, /opacity:0;font-size:1px[^>]*>[0-9a-f]{12}<\/span>/);
+});
+
 test('email copy of the logo is embedded inline and scaled to fit', () => {
   fs.writeFileSync(path.join(PUBLIC_UPLOAD_DIR, 'logomail-abc.png'), pngOf(168, 168));
   settings.setInternal('logo', '/uploads/logo-big.png'); // original not needed when the email copy exists

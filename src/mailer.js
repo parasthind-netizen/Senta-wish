@@ -1,5 +1,6 @@
 'use strict';
 // Email delivery (SMTP via nodemailer) + festive templates + in-app notifications.
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const nodemailer = require('nodemailer');
@@ -92,8 +93,17 @@ function emailLogo(s = settings.loadAll()) {
   return value;
 }
 
-function htmlEmail(subject, body, logo = null) {
+/**
+ * Invisible per-email marker. Gmail hides content that repeats from earlier messages in the same
+ * conversation behind a "•••" button (e.g. two reminders with the same subject). A unique token in
+ * the header and footer makes every email different, so the whole card is always shown.
+ */
+const uniqueMarker = (ref, bg) =>
+  `<span style="color:${bg};opacity:0;font-size:1px;line-height:1px;mso-hide:all" aria-hidden="true">${ref}</span>`;
+
+function htmlEmail(subject, body, logo = null, ref = crypto.randomBytes(6).toString('hex')) {
   const s = settings.loadAll();
+  const marker = uniqueMarker(ref, s.theme_midnight);
   const paragraphs = escapeHtml(body)
     .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" style="color:#e9b949">$1</a>')
     .split(/\n{2,}/).map((p) => `<p style="margin:0 0 14px;line-height:1.6">${p.replace(/\n/g, '<br>')}</p>`).join('');
@@ -107,12 +117,12 @@ function htmlEmail(subject, body, logo = null) {
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:${s.theme_midnight};border:1px solid rgba(233,185,73,.35);border-radius:18px;overflow:hidden">
       <tr><td style="background:linear-gradient(90deg,${s.theme_red},${s.theme_green});height:6px"></td></tr>
       <tr><td style="padding:28px 32px 8px;text-align:center">
-        ${header}
+        ${marker}${header}
         <div style="font-size:13px;letter-spacing:3px;color:${s.theme_gold};margin-top:8px;text-transform:uppercase">${escapeHtml(s.event_title)}</div>
         <h1 style="font-size:22px;margin:12px 0 0;color:#fff">${escapeHtml(subject)}</h1>
       </td></tr>
       <tr><td style="padding:20px 32px 8px;font-size:15px;color:#e8e4da">${paragraphs}</td></tr>
-      <tr><td style="padding:8px 32px 28px;text-align:center;font-size:12px;color:#a9b3cc;font-style:italic">${escapeHtml(s.slogan)}</td></tr>
+      <tr><td style="padding:8px 32px 28px;text-align:center;font-size:12px;color:#a9b3cc;font-style:italic">${escapeHtml(s.slogan)}${marker}</td></tr>
     </table>
   </td></tr></table></body></html>`;
 }
@@ -120,8 +130,11 @@ function htmlEmail(subject, body, logo = null) {
 /** The HTML part + inline attachments for an email (exported for tests). */
 function composeEmail(subject, text) {
   const logo = emailLogo();
+  const ref = crypto.randomBytes(6).toString('hex');
   return {
-    html: htmlEmail(subject, text, logo),
+    html: htmlEmail(subject, text, logo, ref),
+    // A unique entity id also stops Gmail from bundling separate notifications into one thread
+    headers: { 'X-Entity-Ref-ID': ref },
     attachments: logo
       ? [{ filename: 'logo.png', content: logo.content, contentType: 'image/png', cid: LOGO_CID, contentDisposition: 'inline' }]
       : [],
