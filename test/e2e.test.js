@@ -85,6 +85,21 @@ test('full Secret Santa journey with privacy checks', async () => {
   const emps = (await admin.get('/api/admin/employees')).data.employees;
   assert.equal(emps.length, 6);
 
+  // --- test emails: sample tag values (employee's name when sending to their email) and template choice
+  const sample = (await admin.get(`/api/admin/email/sample?to=${PEOPLE[2].email}`)).data.values;
+  assert.equal(sample.full_name, 'Person C');
+  assert.equal(sample.first_name, 'Person');
+  assert.equal(sample.code, '123456');
+  assert.ok(sample.budget && sample.event_title && 'message' in sample);
+  assert.ok((await admin.get('/api/admin/email/sample')).data.values.full_name, 'falls back to the admin name');
+  assert.equal((await anon.get('/api/admin/email/sample')).status, 401);
+  const badTpl = await admin.post('/api/admin/email/test', { template: 'nope' });
+  assert.equal(badTpl.status, 400);
+  assert.match(badTpl.data.error, /Unknown email template/);
+  const noSmtp = await admin.post('/api/admin/email/test', { template: 'all' });
+  assert.equal(noSmtp.status, 400);
+  assert.match(noSmtp.data.error, /not configured/);
+
   // --- unauthenticated access is refused
   assert.equal((await anon.get('/api/me')).status, 401);
   assert.equal((await anon.get('/api/admin/employees')).status, 401);

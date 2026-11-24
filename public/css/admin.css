@@ -137,6 +137,9 @@ table.t .actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap
 .alert.ok { background: color-mix(in srgb, var(--green) 22%, transparent); border: 1px solid color-mix(in srgb, var(--green-bright) 40%, transparent); color: #c9f5dc; }
 .placeholder-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
 .placeholder-chips code { padding: 3px 8px; border-radius: 6px; background: rgba(255,255,255,.08); font-size: 0.8rem; color: var(--gold-soft); cursor: pointer; }
+.tag-values { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: baseline; margin-bottom: 14px; font-size: 0.86rem; }
+.tag-values code { padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,.08); font-size: 0.78rem; color: var(--gold-soft); white-space: nowrap; }
+.tag-values span { overflow-wrap: anywhere; color: var(--text, #e8e4da); }
 .activity { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 0.88rem; }
 .activity:last-child { border-bottom: 0; }
 .activity .when { color: var(--faint); white-space: nowrap; margin-left: auto; font-size: 0.8rem; }

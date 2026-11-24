@@ -1063,7 +1063,14 @@
     const t = A.settings.templates;
     view.innerHTML = `<div class="grid grid-2">
       <div>${settingsPanel({ id: 'smtp', title: '📧 Company email (SMTP)', fields: SMTP_FIELDS, intro: 'Works with Microsoft 365, Google Workspace, Amazon SES or any SMTP relay.' })}
-        <div class="panel"><h2>🧪 Send a test email</h2><div class="toolbar"><input type="email" id="testTo" placeholder="${esc(A.admin.email)}" style="flex:1"><button class="btn btn-ghost btn-sm" id="testBtn">Send test</button></div></div>
+        <div class="panel"><h2>🧪 Send a test email</h2>
+          <div class="field"><label for="testTpl">What to send</label><select id="testTpl">
+            <option value="connection">Quick connection check</option>
+            ${Object.entries(TEMPLATE_NAMES).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}
+            <option value="all">📬 All templates (${Object.keys(TEMPLATE_NAMES).length} emails)</option></select></div>
+          <div class="field"><label for="testTo">Send to</label><input type="email" id="testTo" placeholder="${esc(A.admin.email)}"></div>
+          <div id="testTags"></div>
+          <div class="form-actions"><button class="btn btn-primary btn-sm" id="testBtn">📨 Send test</button></div></div>
         ${settingsPanel({ id: 'auto', title: '⏰ Automatic reminders', fields: AUTO_FIELDS })}</div>
       <div class="panel" id="tplPanel"><div class="panel-head"><h2>✍️ Notification templates</h2><button class="btn btn-ghost btn-xs" id="tplReset">Restore defaults</button></div>
         <p class="muted" style="font-size:.88rem;margin-top:-6px">Click a placeholder to copy it. Templates must never include wish or assignment details – they go to inboxes.</p>
@@ -1081,6 +1088,7 @@
       try {
         const r = await api('/api/admin/settings', { method: 'PUT', body: { templates: { [key]: { subject: $('#tplSubj').value, body: $('#tplBody').value } } } });
         A.settings = r.settings; Object.assign(t, r.settings.templates); SS.toast('Template saved.', 'success');
+        paintTags(); // the saved text may use different tags
       } catch (err) { toastErr(err); }
     });
     $('#tplReset').addEventListener('click', async () => {
@@ -1093,10 +1101,32 @@
       area.value = area.value.slice(0, pos) + c.dataset.ph + area.value.slice(area.selectionEnd ?? pos);
       area.focus();
     }));
+    // Test emails: which tags the chosen template uses and the sample value each one gets
+    let sample = {};
+    const tagsIn = (keys) => [...new Set(keys.flatMap((k) => `${t[k].subject} ${t[k].body}`.match(/\{\{\s*[a-z_]+\s*\}\}/gi) || [])
+      .map((m) => m.replace(/[{}\s]/g, '')))];
+    const paintTags = () => {
+      const v = $('#testTpl').value;
+      if (v === 'connection') { $('#testTags').innerHTML = '<p class="muted" style="font-size:.85rem">A short plain email that checks the SMTP settings work.</p>'; return; }
+      const tags = tagsIn(v === 'all' ? Object.keys(TEMPLATE_NAMES) : [v]);
+      $('#testTags').innerHTML = `<p class="muted" style="font-size:.85rem;margin:0 0 8px">Looks exactly like the real email (the <strong>saved</strong> template${v === 'all' ? 's' : ''}), with “[Test]” before the subject. The name is the employee’s if you send to their email, otherwise yours. Tags used:</p>
+        ${tags.length ? `<div class="tag-values">${tags.map((k) => `<code>{{${esc(k)}}}</code><span>${k in sample
+          ? (String(sample[k]) ? esc(sample[k]) : '<em class="muted">(empty – fill it in on its settings page)</em>')
+          : '<strong style="color:var(--gold-soft)">⚠️ not a known tag – it will be blank</strong>'}</span>`).join('')}</div>` : '<p class="muted" style="font-size:.85rem">This template uses no tags.</p>'}`;
+    };
+    const loadSample = async () => {
+      try { sample = (await api(`/api/admin/email/sample?to=${encodeURIComponent($('#testTo').value.trim())}`)).values; } catch { sample = {}; }
+      paintTags();
+    };
+    $('#testTpl').addEventListener('change', paintTags);
+    $('#testTo').addEventListener('change', loadSample);
+    loadSample();
     $('#testBtn').addEventListener('click', async (e) => {
       SS.busy(e.target, true, ' Sending…');
-      try { await api('/api/admin/email/test', { method: 'POST', body: { to: $('#testTo').value } }); SS.toast('Test email sent! Check the inbox.', 'success'); }
-      catch (err) { toastErr(err); } finally { SS.busy(e.target, false); }
+      try {
+        const r = await api('/api/admin/email/test', { method: 'POST', body: { to: $('#testTo').value, template: $('#testTpl').value } });
+        SS.toast(r.sent > 1 ? `${r.sent} test emails sent to ${r.to}! Check the inbox.` : `Test email sent to ${r.to}! Check the inbox.`, 'success');
+      } catch (err) { toastErr(err); } finally { SS.busy(e.target, false); }
     });
   };
 

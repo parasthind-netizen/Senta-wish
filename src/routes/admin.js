@@ -676,15 +676,44 @@ router.get('/notifications', (req, res) => {
   });
 });
 
+/** Whose name fills {{first_name}} / {{full_name}} in a test: the employee with that email, otherwise the admin. */
+function testPerson(req, to) {
+  const emp = to ? get('SELECT full_name FROM employees WHERE email = ?', to) : null;
+  return { full_name: (emp && emp.full_name) || req.admin.name || 'Santa Elf' };
+}
+
+router.get('/email/sample', (req, res) => {
+  const to = clean(req.query.to, 254);
+  res.json({ values: mailer.sampleVars(testPerson(req, isEmail(to) ? to : '')) });
+});
+
+// template: 'connection' (plain check), a template key, or 'all' (one email per template)
 router.post('/email/test', async (req, res) => {
   const to = clean(req.body.to, 254) || req.admin.email;
   if (!isEmail(to)) throw httpError(400, 'Enter a valid email address.');
-  const result = await mailer.sendMail(to, `Test email from ${settings.getSetting('event_title')} 🎄`,
-    'Ho ho ho! If you can read this, email notifications are configured correctly.');
-  log(req, 'email.test', { to, status: result.status });
-  if (result.status === 'not_configured') throw httpError(400, 'Email is not configured. Turn on email and fill in the SMTP host and From address.');
-  if (result.status === 'failed') throw httpError(502, `Sending failed: ${result.error}`);
-  res.json({ ok: true });
+  const templates = settings.getSetting('templates');
+  const choice = clean(req.body.template, 60) || 'connection';
+  let emails;
+  if (choice === 'connection') {
+    emails = [{ subject: `Test email from ${settings.getSetting('event_title')} 🎄`, body: 'Ho ho ho! If you can read this, email notifications are configured correctly.' }];
+  } else {
+    const keys = choice === 'all' ? Object.keys(templates) : [choice];
+    if (!keys.every((k) => templates[k])) throw httpError(400, 'Unknown email template.');
+    const vars = mailer.sampleVars(testPerson(req, to));
+    emails = keys.map((k) => ({ subject: `[Test] ${mailer.render(templates[k].subject, vars)}`, body: mailer.render(templates[k].body, vars) }));
+  }
+  let sent = 0;
+  for (const m of emails) {
+    const result = await mailer.sendMail(to, m.subject, m.body);
+    if (result.status === 'not_configured') throw httpError(400, 'Email is not configured. Turn on email and fill in the SMTP host and From address.');
+    if (result.status === 'failed') {
+      log(req, 'email.test', { to, template: choice, sent, status: 'failed' });
+      throw httpError(502, `Sending failed${sent ? ` after ${sent} of ${emails.length} emails` : ''}: ${result.error}`);
+    }
+    sent += 1;
+  }
+  log(req, 'email.test', { to, template: choice, sent, status: 'sent' });
+  res.json({ ok: true, sent, to });
 });
 
 /* ----------------------------------------------------------------- audit */

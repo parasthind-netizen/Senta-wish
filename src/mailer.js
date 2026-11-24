@@ -61,6 +61,14 @@ function baseVars(employee, extra = {}) {
   };
 }
 
+/** Tag values for test emails: the real settings (dates, budget, site link) plus a sample code and message. */
+function sampleVars(person) {
+  return baseVars(person, {
+    code: '123456',
+    message: 'This is a sample message from HR – the text you type when sending a custom reminder appears here.',
+  });
+}
+
 function pngSize(buf) {
   if (buf.length < 24 || buf.readUInt32BE(0) !== 0x89504e47 || buf.toString('ascii', 12, 16) !== 'IHDR') return null;
   return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
@@ -213,5 +221,5 @@ function unreadCount(employeeId) {
 }
 
 module.exports = {
-  notify, notifyMany, sendOtp, sendMail, composeEmail, smtpConfigured, listForEmployee, unreadCount, render, baseVars,
+  notify, notifyMany, sendOtp, sendMail, composeEmail, sampleVars, smtpConfigured, listForEmployee, unreadCount, render, baseVars,
 };
