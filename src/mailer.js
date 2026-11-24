@@ -87,6 +87,61 @@ function emojify(text) {
   return String(text).replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
 }
 
+/* ---------- "Fancy text" (𝓛𝓮𝓽, 𝐁𝐨𝐥𝐝, 𝘐𝘵𝘢𝘭𝘪𝘤 …) ----------
+ * Font-generator websites don't change the font – they swap letters for Unicode maths symbols.
+ * When HR writes a message like that, the rest of the email is written in the same style so every
+ * line matches (or, with email_match_fancy off, those letters are turned back into normal ones). */
+// First code point of A–Z a–z (52 letters) for each style, in Unicode order
+const FANCY_STYLES = {
+  bold: 0x1D400, italic: 0x1D434, boldItalic: 0x1D468, script: 0x1D49C, boldScript: 0x1D4D0, fraktur: 0x1D504,
+  doubleStruck: 0x1D538, boldFraktur: 0x1D56C, sans: 0x1D5A0, sansBold: 0x1D5D4, sansItalic: 0x1D608,
+  sansBoldItalic: 0x1D63C, monospace: 0x1D670,
+};
+const FANCY_ORDER = Object.keys(FANCY_STYLES);
+const FANCY_DIGITS = { bold: 0x1D7CE, doubleStruck: 0x1D7D8, sans: 0x1D7E2, sansBold: 0x1D7EC, monospace: 0x1D7F6 };
+// Letters some styles borrow from the "letterlike symbols" block
+const FANCY_HOLES = {
+  italic: { h: 'ℎ' },
+  script: { B: 'ℬ', E: 'ℰ', F: 'ℱ', H: 'ℋ', I: 'ℐ', L: 'ℒ', M: 'ℳ', R: 'ℛ', e: 'ℯ', g: 'ℊ', o: 'ℴ' },
+  fraktur: { C: 'ℭ', H: 'ℌ', I: 'ℑ', R: 'ℜ', Z: 'ℨ' },
+  doubleStruck: { C: 'ℂ', H: 'ℍ', N: 'ℕ', P: 'ℙ', Q: 'ℚ', R: 'ℝ', Z: 'ℤ' },
+};
+const HOLE_STYLE = new Map(Object.entries(FANCY_HOLES).flatMap(([st, m]) => Object.values(m).map((c) => [c, st])));
+
+/** Fancy letters (maths letters, letterlike, full-width, circled) back to normal letters and digits. */
+function plainLetters(text) {
+  return String(text).replace(/[\u{1D400}-\u{1D7FF}ℂℊℋℌℍℎℐℑℒℓℕℙℚℛℜℝℤℨℬℭℯℰℱℳℴ\u{FF01}-\u{FF5E}\u{24B6}-\u{24E9}]/gu, (c) => c.normalize('NFKC'));
+}
+
+/** The fancy style most used in the text (e.g. 'boldScript'), or null if it is normal text. */
+function fancyStyleOf(text) {
+  const counts = {};
+  for (const ch of String(text)) {
+    const cp = ch.codePointAt(0);
+    let st = null;
+    if (cp >= 0x1D400 && cp < 0x1D400 + 52 * FANCY_ORDER.length) st = FANCY_ORDER[Math.floor((cp - 0x1D400) / 52)];
+    else if (HOLE_STYLE.has(ch)) st = HOLE_STYLE.get(ch);
+    if (st) counts[st] = (counts[st] || 0) + 1;
+  }
+  const [best, n] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0] || [];
+  return n >= 6 ? best : null; // a couple of stray symbols are not a style
+}
+
+/** Write text in a fancy style. Links and email addresses stay normal so they still work. */
+function toFancy(text, style) {
+  const base = FANCY_STYLES[style];
+  if (!base) return String(text);
+  const holes = FANCY_HOLES[style] || {};
+  const digits = FANCY_DIGITS[style];
+  const convert = (part) => plainLetters(part).replace(/[A-Za-z0-9]/g, (c) => {
+    if (holes[c]) return holes[c];
+    const code = c.charCodeAt(0);
+    if (code <= 57) return digits ? String.fromCodePoint(digits + code - 48) : c;
+    return String.fromCodePoint(base + (code <= 90 ? code - 65 : 26 + code - 97));
+  });
+  return String(text).split(/(https?:\/\/\S+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+)/).map((p, i) => (i % 2 ? p : convert(p))).join('');
+}
+
 /**
  * Subject + body for a template. A custom message ({{message}}) may use the tags too
  * (e.g. "Hi {{first_name}}"), and emoji codes are converted.
@@ -163,6 +218,14 @@ function emailDecorations() {
 }
 
 const SANS = "'Segoe UI',Arial,sans-serif";
+// Email font choices: fonts already installed on almost every computer and phone, so Gmail / Outlook show them too
+const EMAIL_FONTS = {
+  segoe: SANS,
+  georgia: "Georgia,'Times New Roman',serif",
+  palatino: "'Palatino Linotype','Book Antiqua',Palatino,Georgia,serif",
+  trebuchet: "'Trebuchet MS','Segoe UI',Arial,sans-serif",
+  verdana: 'Verdana,Geneva,sans-serif',
+};
 
 /** Darken (amount < 0) or lighten a #rrggbb colour. */
 function shade(hex, amount) {
@@ -173,9 +236,16 @@ function shade(hex, amount) {
 
 function htmlEmail(subject, body, logo = null, ref = crypto.randomBytes(6).toString('hex'), decor = []) {
   const s = settings.loadAll();
+  // Fancy text in the message → heading, greeting, message and footer all in that style; otherwise plain letters.
+  // The event title line ("TECHSARA SECRET SANTA 2026" between gold lines) always stays exactly as it is.
+  let slogan = s.slogan;
+  const style = s.email_match_fancy === false ? null : fancyStyleOf(body);
+  if (style) [subject, body, slogan] = [subject, body, slogan].map((t) => toFancy(t, style));
+  else [subject, body, slogan] = [subject, body, slogan].map(plainLetters);
   const card = s.email_card_color || '#262f7e';
   const bg = s.email_bg_color || '#151a4b';
   const gold = s.email_accent_color || '#e9b949';
+  const font = EMAIL_FONTS[s.email_font] || SANS; // subject, message and footer (the event title keeps Segoe UI)
   const marker = uniqueMarker(ref, card);
   // Logo blue across the top half, fading a little lighter towards the bottom
   const cardBg = `background-color:${card};background-image:linear-gradient(180deg,${card} 0%,${card} 50%,${shade(card, 0.2)} 100%)`;
@@ -210,9 +280,9 @@ function htmlEmail(subject, body, logo = null, ref = crypto.randomBytes(6).toStr
           <td align="center" style="padding:0 12px;font-family:${SANS};font-size:13px;letter-spacing:3px;color:${gold};text-transform:uppercase">${escapeHtml(s.event_title)}</td>${rule}
         </tr></table></td></tr>
       <tr><td align="center" style="padding:12px 32px 0">
-        <h1 style="font-size:22px;margin:0;color:#fff;font-family:${SANS}">${escapeHtml(subject)}</h1></td></tr>
-      <tr><td style="padding:20px 32px 8px;font-size:15px;color:#eef0fa;font-family:${SANS}">${paragraphs}</td></tr>
-      <tr><td style="padding:8px 32px 28px;text-align:center;font-size:12px;color:#dde1f5;font-style:italic;font-family:${SANS}">${escapeHtml(s.slogan)}${marker}</td></tr>
+        <h1 style="font-size:22px;margin:0;color:#fff;font-family:${font}">${escapeHtml(subject)}</h1></td></tr>
+      <tr><td style="padding:20px 32px 8px;font-size:15px;color:#eef0fa;font-family:${font}">${paragraphs}</td></tr>
+      <tr><td style="padding:8px 32px 28px;text-align:center;font-size:12px;color:#dde1f5;font-style:italic;font-family:${font}">${escapeHtml(slogan)}${marker}</td></tr>
     </table>
   </td></tr></table></body></html>`;
 }

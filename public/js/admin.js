@@ -1102,6 +1102,9 @@
     { key: 'email_card_color', label: 'Card colour', type: 'color', help: 'Default #262f7e – the logo blue.' },
     { key: 'email_bg_color', label: 'Background around the card', type: 'color' },
     { key: 'email_accent_color', label: 'Accent – border, lines, links', type: 'color', help: 'Default #e9b949 – the logo gold.' },
+    { key: 'email_font', label: 'Font', type: 'select', options: [['segoe', 'Segoe UI – modern (default)'], ['georgia', 'Georgia – classic serif'], ['palatino', 'Palatino – elegant serif'], ['trebuchet', 'Trebuchet – friendly'], ['verdana', 'Verdana – clear and wide']],
+      help: 'Used for the subject, message and footer. These fonts are installed on almost every computer and phone, so Gmail and Outlook show them exactly.' },
+    { key: 'email_match_fancy', label: 'Match fancy text', type: 'bool', help: 'If a message is written in fancy letters from a font website (𝓛𝓮𝓽, 𝐁𝐨𝐥𝐝 …), the heading, greeting and footer use the same style. Off = fancy letters become normal ones.' },
     { key: 'email_decorations', label: 'Pine branches in the top corners', type: 'bool' },
   ];
   const TEMPLATE_NAMES = {

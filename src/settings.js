@@ -163,6 +163,8 @@ const DEFAULTS = {
   email_card_color: '#262f7e',
   email_accent_color: '#e9b949',
   email_decorations: true, // pine branches in the top corners
+  email_font: 'segoe', // segoe | georgia | palatino | trebuchet | verdana (installed fonts, so every inbox shows them)
+  email_match_fancy: true, // message written in "fancy text" (𝓛𝓮𝓽…) → the rest of the email in the same style
   templates: DEFAULT_TEMPLATES,
 
   // Internal bookkeeping (not editable from the UI)
@@ -200,7 +202,7 @@ const SCHEMA = {
   email_enabled: { type: 'bool' }, smtp_host: str(200), smtp_port: { type: 'int', min: 1, max: 65535 },
   smtp_secure: { type: 'bool' }, smtp_user: str(200), smtp_pass: { type: 'secret', max: 300 }, smtp_from: str(200),
   email_bg_color: { type: 'color' }, email_card_color: { type: 'color' }, email_accent_color: { type: 'color' },
-  email_decorations: { type: 'bool' },
+  email_decorations: { type: 'bool' }, email_font: { type: 'enum', values: ['segoe', 'georgia', 'palatino', 'trebuchet', 'verdana'] }, email_match_fancy: { type: 'bool' },
   templates: { type: 'templates' },
 };
 

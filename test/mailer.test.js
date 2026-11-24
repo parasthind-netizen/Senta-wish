@@ -86,6 +86,37 @@ test('a custom message can use tags and emoji codes', () => {
   assert.ok(!body.includes('{{'));
 });
 
+// The event title between the gold lines must always look exactly like this
+const EVENT_TITLE_CELL = 'letter-spacing:3px;color:#e9b949;text-transform:uppercase">TECHSARA SECRET SANTA 2026</td>';
+
+test('fancy text in the message → the whole email follows that style (links and the event title stay normal)', () => {
+  const body = 'Hi Riya,\n\n𝓛𝓮𝓽 𝓽𝓱𝓮 𝓢𝓮𝓬𝓻𝓮𝓽 𝓢𝓪𝓷𝓽𝓪 𝓶𝓪𝓰𝓲𝓬 𝓫𝓮𝓰𝓲𝓷!\nSpread joy.\n\nhttps://santa.example.com/app';
+  const { html } = mailer.composeEmail('A note', body);
+  assert.ok(html.includes('𝓗𝓲 𝓡𝓲𝔂𝓪,'), 'greeting in the same bold script');
+  assert.ok(html.includes('𝓢𝓹𝓻𝓮𝓪𝓭 𝓳𝓸𝔂.'), 'other lines too');
+  assert.ok(html.includes('>𝓐 𝓷𝓸𝓽𝓮</h1>'), 'heading too');
+  assert.ok(html.includes('href="https://santa.example.com/app"') && html.includes('>https://santa.example.com/app</a>'), 'link still works');
+  assert.ok(html.includes(EVENT_TITLE_CELL), 'event title unchanged');
+
+  // switched off: fancy letters go back to normal ones, so every line still matches
+  settings.saveMany({ email_match_fancy: false });
+  const off = mailer.composeEmail('A note', body).html;
+  assert.ok(off.includes('Let the Secret Santa magic begin!') && off.includes('Hi Riya,'));
+  assert.ok(off.includes(EVENT_TITLE_CELL));
+  settings.saveMany({ email_match_fancy: true });
+
+  // normal text is left alone, including ₹, emoji, curly quotes and Hindi
+  const normal = 'Normal text, ₹500 – ₹1,000 … 🎅 “quotes” café हिंदी';
+  const plain = mailer.composeEmail('Hello', normal).html;
+  assert.ok(plain.includes('Normal text, ₹500 – ₹1,000 … 🎅 “quotes” café हिंदी') && plain.includes(EVENT_TITLE_CELL));
+});
+
+test('other fancy styles are matched too (bold, with bold digits)', () => {
+  const { html } = mailer.composeEmail('Hi', 'Dear team,\n\n𝐒𝐞𝐜𝐫𝐞𝐭 𝐒𝐚𝐧𝐭𝐚 𝟐𝟎𝟐𝟔 𝐢𝐬 𝐡𝐞𝐫𝐞');
+  assert.ok(html.includes('𝐃𝐞𝐚𝐫 𝐭𝐞𝐚𝐦,'));
+  assert.ok(html.includes(EVENT_TITLE_CELL));
+});
+
 test('the admin preview shows the logo as a data: image (no cid:)', () => {
   fs.writeFileSync(path.join(PUBLIC_UPLOAD_DIR, 'logomail-prev.png'), pngOf(168, 168));
   settings.setInternal('logo_email', '/uploads/logomail-prev.png');
@@ -107,11 +138,13 @@ test('email look: logo colours, bottom fade, plain heading font, corner branches
   assert.match(mail.html, /<h1 style="font-size:22px[^"]*'Segoe UI'[^"]*">Your wishes are tucked in 🎁<\/h1>/);
   assert.ok(!mail.html.includes('Great Vibes') && !mail.html.includes('fonts.googleapis'), 'original fonts, no web fonts');
 
-  settings.saveMany({ email_decorations: false, email_card_color: '#112233' });
+  assert.ok(mail.html.includes("<h1 style=\"font-size:22px;margin:0;color:#fff;font-family:'Segoe UI'"), 'Segoe UI by default');
+  settings.saveMany({ email_decorations: false, email_card_color: '#112233', email_font: 'georgia' });
   const plain = mailer.composeEmail('Hello', 'Body');
   assert.equal(plain.attachments.filter((a) => a.filename.startsWith('branch-')).length, 0);
   assert.ok(plain.html.includes('#112233'));
-  settings.saveMany({ email_decorations: true, email_card_color: '#262f7e' });
+  assert.ok(plain.html.includes("font-family:Georgia,'Times New Roman',serif"), 'chosen font used');
+  settings.saveMany({ email_decorations: true, email_card_color: '#262f7e', email_font: 'segoe' });
 });
 
 test.after(() => {
