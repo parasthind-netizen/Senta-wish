@@ -42,4 +42,9 @@ function consumeOtp(employeeId, purpose, code) {
   return true;
 }
 
-module.exports = { issueOtp, consumeOtp };
+/** Drop unused codes (e.g. the email could not be sent), so the user can ask again straight away. */
+function cancelOtp(employeeId, purpose) {
+  run('DELETE FROM otps WHERE employee_id = ? AND purpose = ? AND used_at IS NULL', employeeId, purpose);
+}
+
+module.exports = { issueOtp, consumeOtp, cancelOtp };

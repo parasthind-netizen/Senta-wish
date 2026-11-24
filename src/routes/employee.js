@@ -8,7 +8,7 @@ const auth = require('../auth');
 const settings = require('../settings');
 const privacy = require('../privacy');
 const mailer = require('../mailer');
-const { issueOtp, consumeOtp } = require('../otp');
+const { issueOtp, consumeOtp, cancelOtp } = require('../otp');
 const { audit, employeeActor } = require('../audit');
 const { limiter, asyncRoute, httpError, clean, imageUpload, saveImage, removeFile } = require('../util');
 
@@ -49,6 +49,31 @@ function matchDirectory(email, code) {
       : "We couldn't find this email in the Techsara employee directory. Please check it or contact HR.");
   }
   if (!emp.active) throw httpError(403, 'Your profile is not active for Secret Santa. Please contact HR.');
+  return emp;
+}
+
+/**
+ * Issue a code and email it. If the email can't be sent, say so instead of "a code is on its way".
+ * (Without SMTP outside production the code is printed in the server console, so that is fine.)
+ */
+async function sendCode(emp, purpose) {
+  const code = issueOtp(emp.id, purpose);
+  const result = await mailer.sendOtp(emp, code);
+  if (result.status === 'sent' || (result.status === 'not_configured' && process.env.NODE_ENV !== 'production')) return;
+  cancelOtp(emp.id, purpose);
+  throw httpError(503, result.status === 'not_configured'
+    ? "Email isn't set up yet, so we can't send codes. Please sign in with your password or contact HR."
+    : "We couldn't send the code email just now. Please try again in a minute, or sign in with your password.");
+}
+
+/** Employee for a code-based sign-in / reset. Sign-up and password login already tell people whether
+ *  they are in the directory and activated, so hiding it here only leaves them waiting for an email that never comes. */
+function activatedEmployee(identifier) {
+  const emp = findEmployee(identifier);
+  if (!emp) throw httpError(404, "We couldn't find an active employee with this email or Employee ID. Please check it or contact HR.");
+  if (!get('SELECT 1 FROM employee_auth WHERE employee_id = ?', emp.id)) {
+    throw httpError(400, 'You have not activated your account yet. Choose "First time here?" to get started.');
+  }
   return emp;
 }
 
@@ -93,10 +118,7 @@ router.post('/auth/signup/start', authLimiter, otpLimiter, asyncRoute(async (req
   const existing = get('SELECT employee_id FROM employee_auth WHERE employee_id = ?', emp.id);
   if (existing) throw httpError(409, 'An account already exists for this employee. Please sign in instead (or use "Forgot password").');
   const otpRequired = settings.getSetting('require_email_otp_signup');
-  if (otpRequired) {
-    const code = issueOtp(emp.id, 'signup');
-    await mailer.sendOtp(emp, code);
-  }
+  if (otpRequired) await sendCode(emp, 'signup');
   res.json({
     ok: true,
     otpRequired,
@@ -153,14 +175,9 @@ router.post('/auth/login', authLimiter, asyncRoute(async (req, res) => {
 
 router.post('/auth/otp/request', otpLimiter, asyncRoute(async (req, res) => {
   if (!loginAllows('otp')) throw httpError(400, 'One-time code sign-in is turned off. Please use your password.');
-  const emp = findEmployee(req.body.identifier);
-  const creds = emp ? get('SELECT employee_id FROM employee_auth WHERE employee_id = ?', emp.id) : null;
-  if (emp && creds) {
-    const code = issueOtp(emp.id, 'login');
-    await mailer.sendOtp(emp, code);
-  }
-  // Same answer either way so the endpoint can't be used to discover accounts
-  res.json({ ok: true, message: 'If an activated account matches, a 6-digit code is on its way to the official email.' });
+  const emp = activatedEmployee(req.body.identifier);
+  await sendCode(emp, 'login');
+  res.json({ ok: true, message: 'A 6-digit code is on its way to your official email.' });
 }));
 
 router.post('/auth/otp/verify', authLimiter, asyncRoute(async (req, res) => {
@@ -172,12 +189,9 @@ router.post('/auth/otp/verify', authLimiter, asyncRoute(async (req, res) => {
 }));
 
 router.post('/auth/password/forgot', otpLimiter, asyncRoute(async (req, res) => {
-  const emp = findEmployee(req.body.identifier);
-  if (emp && get('SELECT 1 FROM employee_auth WHERE employee_id = ?', emp.id)) {
-    const code = issueOtp(emp.id, 'reset');
-    await mailer.sendOtp(emp, code);
-  }
-  res.json({ ok: true, message: 'If an activated account matches, a reset code is on its way to the official email.' });
+  const emp = activatedEmployee(req.body.identifier);
+  await sendCode(emp, 'reset');
+  res.json({ ok: true, message: 'A reset code is on its way to your official email.' });
 }));
 
 router.post('/auth/password/reset', authLimiter, asyncRoute(async (req, res) => {

@@ -90,6 +90,13 @@ test('full Secret Santa journey with privacy checks', async () => {
   assert.equal((await anon.get('/api/admin/employees')).status, 401);
   assert.equal((await anon.get('/api/assignment')).status, 401);
 
+  // --- a one-time code request says why no code is coming, instead of a silent "on its way"
+  assert.equal((await anon.post('/api/auth/otp/request', { identifier: 'nobody@example.com' })).status, 404);
+  const notActivated = await anon.post('/api/auth/otp/request', { identifier: PEOPLE[0].email });
+  assert.equal(notActivated.status, 400);
+  assert.match(notActivated.data.error, /not activated/);
+  assert.equal((await anon.post('/api/auth/password/forgot', { identifier: PEOPLE[0].email })).status, 400);
+
   // --- employees activate, register and add wishes
   // Optional Employee ID check at sign-up (off by default)
   assert.equal((await admin.put('/api/admin/settings', { signup_require_employee_id: true })).status, 200);
@@ -115,6 +122,9 @@ test('full Secret Santa journey with privacy checks', async () => {
   // login with Employee ID works too
   const relog = new Client();
   assert.equal((await relog.post('/api/auth/login', { identifier: 'E100', password: 'Secret-123' })).status, 200);
+  // activated account: the code is sent (printed to the console here, since tests have no SMTP)
+  const otpReq = await new Client().post('/api/auth/otp/request', { identifier: PEOPLE[1].email });
+  assert.equal(otpReq.status, 200, JSON.stringify(otpReq.data));
 
   // --- admin never receives wish content
   const adminView = await admin.get('/api/admin/employees');
