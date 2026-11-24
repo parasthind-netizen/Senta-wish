@@ -50,8 +50,46 @@ function generatePairs(ids, { mode = 'random', avoidMutual = true } = {}) {
   return generatePairs(ids, { mode: 'chain' });
 }
 
-/** Throws unless pairs form a valid one-to-one Secret Santa distribution over ids. */
-function validatePairs(ids, pairs) {
+/** Location used for grouping: case and spacing don't matter ("Noida", " noida " are the same place). */
+const tidyLocation = (v) => String(v ?? '').trim().replace(/\s+/g, ' ');
+const locationKey = (v) => tidyLocation(v).toLowerCase();
+
+/**
+ * Split participants ({ id, full_name, location }) into location groups for a location-wise draw.
+ * Nobody can be matched outside their group, so every group needs at least 2 people.
+ * @returns {{ groups: Array<{ name: string, ids: number[] }>, problems: string[] }}
+ */
+function groupByLocation(people) {
+  const map = new Map();
+  const missing = [];
+  for (const p of people) {
+    const key = locationKey(p.location);
+    if (!key) { missing.push(p.full_name); continue; }
+    if (!map.has(key)) map.set(key, { name: tidyLocation(p.location), ids: [] });
+    map.get(key).ids.push(p.id);
+  }
+  const groups = [...map.values()].sort((a, b) => b.ids.length - a.ids.length || a.name.localeCompare(b.name));
+  const problems = [];
+  if (missing.length) {
+    const names = missing.slice(0, 5).join(', ') + (missing.length > 5 ? ` and ${missing.length - 5} more` : '');
+    problems.push(`${missing.length} participant${missing.length === 1 ? ' has' : 's have'} no location set (${names}) – add it on the Employees page.`);
+  }
+  for (const g of groups) {
+    if (g.ids.length < 2) problems.push(`"${g.name}" has only 1 participant, so they can't be matched within their location – fix the location or add more people there.`);
+  }
+  return { groups, problems };
+}
+
+/** Pairs made inside each group only – each group is its own random draw (or its own chain). */
+function generateGroupedPairs(groups, opts) {
+  return groups.flatMap((ids) => generatePairs(ids, opts));
+}
+
+/**
+ * Throws unless pairs form a valid one-to-one Secret Santa distribution over ids.
+ * With groupOf (id -> group key), every giver and receiver must also be in the same group.
+ */
+function validatePairs(ids, pairs, groupOf = null) {
   const people = new Set(ids);
   const givers = new Set();
   const receivers = new Set();
@@ -61,6 +99,7 @@ function validatePairs(ids, pairs) {
     if (g === r) throw new Error('A participant was assigned to themselves.');
     if (givers.has(g)) throw new Error('A participant was assigned twice as a giver.');
     if (receivers.has(r)) throw new Error('A recipient has more than one Secret Santa.');
+    if (groupOf && groupOf.get(g) !== groupOf.get(r)) throw new Error('A participant was matched outside their location.');
     givers.add(g);
     receivers.add(r);
   }
@@ -68,4 +107,4 @@ function validatePairs(ids, pairs) {
   return true;
 }
 
-module.exports = { secureShuffle, generatePairs, validatePairs };
+module.exports = { secureShuffle, generatePairs, generateGroupedPairs, validatePairs, locationKey, groupByLocation };

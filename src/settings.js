@@ -144,6 +144,7 @@ const DEFAULTS = {
   require_complete_wishes: true,
   draw_mode: 'random', // random (any valid derangement) | chain (one big gift loop)
   avoid_mutual_pairs: true,
+  draw_by_location: true, // match people only with colleagues from the same office location
   release_on_draw: true,
 
   // Notifications
@@ -188,7 +189,7 @@ const SCHEMA = {
   allowed_email_domains: str(500), login_method: { type: 'enum', values: ['password', 'otp', 'both'] },
   require_email_otp_signup: { type: 'bool' }, signup_require_employee_id: { type: 'bool' }, allow_employee_photo_upload: { type: 'bool' },
   require_complete_wishes: { type: 'bool' }, draw_mode: { type: 'enum', values: ['random', 'chain'] },
-  avoid_mutual_pairs: { type: 'bool' }, release_on_draw: { type: 'bool' },
+  avoid_mutual_pairs: { type: 'bool' }, release_on_draw: { type: 'bool' }, draw_by_location: { type: 'bool' },
   site_url: str(300), auto_reminder_enabled: { type: 'bool' },
   reminder_hours_before: { type: 'int', min: 1, max: 720 },
   email_enabled: { type: 'bool' }, smtp_host: str(200), smtp_port: { type: 'int', min: 1, max: 65535 },

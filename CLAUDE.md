@@ -35,7 +35,7 @@ src/db.js               SQLite connection + full schema (CREATE IF NOT EXISTS) +
 src/security.js         AES-256-GCM encrypt/decrypt, HMAC, tokens, OTP codes, bcrypt, password rules
 src/settings.js         ALL customizable content/config: DEFAULTS, validation SCHEMA, PUBLIC_KEYS, templates
 src/privacy.js          The ONLY module that reads/writes `wishlists` and `assignments` (see invariants)
-src/draw.js             Pure draw algorithm (secure shuffle, derangement, validation) – unit tested
+src/draw.js             Pure draw algorithm (secure shuffle, derangement, location groups, validation) – unit tested
 src/auth.js             Cookie sessions (sha256 of token stored), CSRF, role guards, same-origin check
 src/mailer.js           Nodemailer SMTP, {{placeholder}} templates, in-app notifications. The logo is embedded
                         inline (cid:), using the small `logo_email` copy the admin page makes at upload time

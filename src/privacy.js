@@ -12,7 +12,7 @@
  */
 const { get, all, run, tx, nowIso } = require('./db');
 const { encrypt, decrypt, mac } = require('./security');
-const { generatePairs, validatePairs } = require('./draw');
+const { generatePairs, generateGroupedPairs, validatePairs, groupByLocation, locationKey } = require('./draw');
 const settings = require('./settings');
 const { httpError, clean } = require('./util');
 
@@ -162,7 +162,7 @@ function employeeMayViewPhoto(employeeId, file) {
 function eligibleParticipants() {
   const requireComplete = settings.getSetting('require_complete_wishes');
   return all(`
-    SELECT e.id, e.full_name, e.email, e.employee_code, COALESCE(w.wish_count, 0) AS wish_count
+    SELECT e.id, e.full_name, e.email, e.employee_code, e.location, COALESCE(w.wish_count, 0) AS wish_count
     FROM registrations r
     JOIN employees e ON e.id = r.employee_id AND e.active = 1
     JOIN employee_auth a ON a.employee_id = e.id
@@ -174,7 +174,12 @@ function eligibleParticipants() {
 function drawPreview() {
   const eligible = eligibleParticipants();
   const registered = get('SELECT COUNT(*) AS c FROM registrations r JOIN employees e ON e.id = r.employee_id AND e.active = 1').c;
-  return { eligibleCount: eligible.length, registeredCount: registered, excludedCount: registered - eligible.length };
+  const byLocation = Boolean(settings.getSetting('draw_by_location'));
+  const { groups, problems } = byLocation ? groupByLocation(eligible) : { groups: [], problems: [] };
+  return {
+    eligibleCount: eligible.length, registeredCount: registered, excludedCount: registered - eligible.length,
+    byLocation, locations: groups.map((g) => ({ name: g.name, count: g.ids.length })), problems,
+  };
 }
 
 function runDraw(adminId) {
@@ -184,14 +189,26 @@ function runDraw(adminId) {
     const people = eligibleParticipants();
     if (people.length < 3) throw httpError(400, `At least 3 eligible participants are needed (currently ${people.length}).`);
     const ids = people.map((p) => p.id);
-    const pairs = generatePairs(ids, { mode: s.draw_mode, avoidMutual: s.avoid_mutual_pairs });
-    validatePairs(ids, pairs);
+    const opts = { mode: s.draw_mode, avoidMutual: s.avoid_mutual_pairs };
+    let pairs;
+    let locations = 0;
+    if (s.draw_by_location) {
+      // Location-wise: Noida people are matched only with Noida people, Ahmedabad with Ahmedabad, and so on
+      const { groups, problems } = groupByLocation(people);
+      if (problems.length) throw httpError(400, `Can't run a location-wise draw yet: ${problems.join(' ')}`);
+      pairs = generateGroupedPairs(groups.map((g) => g.ids), opts);
+      validatePairs(ids, pairs, new Map(people.map((p) => [p.id, locationKey(p.location)])));
+      locations = groups.length;
+    } else {
+      pairs = generatePairs(ids, opts);
+      validatePairs(ids, pairs);
+    }
 
     const now = nowIso();
     const released = s.release_on_draw ? 1 : 0;
     const res = run(
       "INSERT INTO draws (status, mode, participant_count, released, released_at, created_by, created_at) VALUES ('active', ?, ?, ?, ?, ?, ?)",
-      s.draw_mode, ids.length, released, released ? now : null, adminId, now,
+      s.draw_mode + (s.draw_by_location ? ' · by location' : ''), ids.length, released, released ? now : null, adminId, now,
     );
     const drawId = Number(res.lastInsertRowid);
     const ins = 'INSERT INTO assignments (draw_id, giver_id, receiver_enc, receiver_tag) VALUES (?, ?, ?, ?)';
@@ -200,7 +217,7 @@ function runDraw(adminId) {
     }
     // Close registrations once names are drawn
     settings.setInternal('registration_open', false);
-    return { drawId, participants: people, released: Boolean(released) };
+    return { drawId, participants: people, released: Boolean(released), locations };
   });
 }
 

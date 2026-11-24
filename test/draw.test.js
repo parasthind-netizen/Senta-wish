@@ -58,3 +58,53 @@ test('secureShuffle keeps all items', () => {
   const ids = range(100);
   assert.deepEqual([...secureShuffle(ids)].sort((a, b) => a - b), ids);
 });
+
+/* ---------- location-wise draw ---------- */
+const { groupByLocation, generateGroupedPairs, locationKey } = require('../src/draw');
+
+const staff = (spec) => {
+  let id = 0;
+  return Object.entries(spec).flatMap(([loc, n]) => Array.from({ length: n }, () => {
+    id += 1;
+    return { id, full_name: `P${id}`, location: loc };
+  }));
+};
+
+test('location-wise: nobody is ever matched outside their location (100 runs per style)', () => {
+  const people = staff({ Noida: 90, Ahmedabad: 60, Jaipur: 17, Pune: 3 });
+  const { groups, problems } = groupByLocation(people);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(groups.map((g) => [g.name, g.ids.length]), [['Noida', 90], ['Ahmedabad', 60], ['Jaipur', 17], ['Pune', 3]]);
+  const ids = people.map((p) => p.id);
+  const groupOf = new Map(people.map((p) => [p.id, locationKey(p.location)]));
+  for (const mode of ['random', 'chain']) {
+    for (let run = 0; run < 100; run += 1) {
+      const pairs = generateGroupedPairs(groups.map((g) => g.ids), { mode, avoidMutual: true });
+      assert.equal(validatePairs(ids, pairs, groupOf), true);
+    }
+  }
+});
+
+test('location-wise: spelling/case/spacing of the same place is one group', () => {
+  const people = [
+    { id: 1, full_name: 'A', location: 'Noida' }, { id: 2, full_name: 'B', location: ' NOIDA ' },
+    { id: 3, full_name: 'C', location: 'noida' }, { id: 4, full_name: 'D', location: 'New  Delhi' }, { id: 5, full_name: 'E', location: 'new delhi' },
+  ];
+  const { groups, problems } = groupByLocation(people);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(groups.map((g) => [g.name, g.ids]), [['Noida', [1, 2, 3]], ['New Delhi', [4, 5]]]);
+});
+
+test('location-wise: a 1-person location or a missing location is reported', () => {
+  const people = [...staff({ Noida: 4, Jaipur: 1 }), { id: 99, full_name: 'No Place', location: '  ' }];
+  const { problems } = groupByLocation(people);
+  assert.equal(problems.length, 2);
+  assert.match(problems[0], /1 participant has no location set \(No Place\)/);
+  assert.match(problems[1], /"Jaipur" has only 1 participant/);
+});
+
+test('validatePairs rejects a cross-location match', () => {
+  const groupOf = new Map([[1, 'noida'], [2, 'noida'], [3, 'ahmedabad'], [4, 'ahmedabad']]);
+  assert.equal(validatePairs([1, 2, 3, 4], [[1, 2], [2, 1], [3, 4], [4, 3]], groupOf), true);
+  assert.throws(() => validatePairs([1, 2, 3, 4], [[1, 3], [3, 2], [2, 4], [4, 1]], groupOf), /outside their location/);
+});

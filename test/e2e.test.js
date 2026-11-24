@@ -42,6 +42,7 @@ class Client {
 
 const PEOPLE = Array.from({ length: 6 }, (_, i) => ({
   employee_code: `E${100 + i}`, full_name: `Person ${String.fromCharCode(65 + i)}`, email: `person${i}@example.com`, department: i % 2 ? 'Engineering' : 'HR',
+  location: i < 3 ? (i === 1 ? ' NOIDA ' : 'Noida') : 'Ahmedabad', // two offices; spelling differences count as one
 }));
 const wishesFor = (p) => [1, 2, 3].map((n) => ({ name: `${p.employee_code}-gift-${n}`, description: `desc ${n}`, link: n === 1 ? 'example.com/item' : '', budget: '₹500' }));
 const PNG = Buffer.from('89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4890000000D49444154789C6360000002000154A24F5D0000000049454E44AE426082', 'hex');
@@ -120,6 +121,20 @@ test('full Secret Santa journey with privacy checks', async () => {
   assert.ok(!adminView.raw.includes('gift-1'), 'admin employee list must not contain wishes');
   assert.ok(adminView.data.employees.every((e) => e.wishCount === 3));
 
+  // --- location-wise draw (on by default): the admin sees the groups, and a 1-person location blocks the draw
+  let preview = (await admin.get('/api/admin/draw')).data.preview;
+  assert.equal(preview.byLocation, true);
+  assert.deepEqual(preview.locations, [{ name: 'Ahmedabad', count: 3 }, { name: 'Noida', count: 3 }]);
+  assert.deepEqual(preview.problems, []);
+  const e105 = emps.find((e) => e.employeeCode === 'E105');
+  assert.equal((await admin.put(`/api/admin/employees/${e105.id}`, { location: 'Jaipur' })).status, 200);
+  preview = (await admin.get('/api/admin/draw')).data.preview;
+  assert.equal(preview.problems.length, 1);
+  const blocked = await admin.post('/api/admin/draw/run', { confirm: 'DRAW' });
+  assert.equal(blocked.status, 400);
+  assert.match(blocked.data.error, /"Jaipur" has only 1 participant/);
+  assert.equal((await admin.put(`/api/admin/employees/${e105.id}`, { location: 'Ahmedabad' })).status, 200);
+
   // --- draw
   assert.equal((await admin.post('/api/admin/draw/run', { confirm: 'nope' })).status, 400);
   const draw = await admin.post('/api/admin/draw/run', { confirm: 'DRAW' });
@@ -143,6 +158,7 @@ test('full Secret Santa journey with privacy checks', async () => {
     assert.equal(r.status, 200);
     const recipient = PEOPLE.find((x) => x.full_name === r.data.recipient.fullName);
     assert.ok(recipient && recipient !== p, 'nobody draws themselves');
+    assert.equal(r.data.recipient.location.trim().toLowerCase(), p.location.trim().toLowerCase(), 'matched within the same location only');
     assert.deepEqual(r.data.recipient.wishes.map((w) => w.name), wishesFor(recipient).map((w) => w.name));
     assert.equal(r.data.recipient.wishes[0].link, 'https://example.com/item');
     assert.ok(!('id' in r.data.recipient) && !('email' in r.data.recipient));

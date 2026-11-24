@@ -598,7 +598,7 @@ router.get('/draw', (req, res) => {
   res.json({
     draw: privacy.drawSummary(),
     preview: privacy.drawPreview(),
-    config: { mode: s.draw_mode, avoidMutual: s.avoid_mutual_pairs, releaseOnDraw: s.release_on_draw, requireComplete: s.require_complete_wishes, drawDate: s.draw_date },
+    config: { mode: s.draw_mode, avoidMutual: s.avoid_mutual_pairs, byLocation: s.draw_by_location, releaseOnDraw: s.release_on_draw, requireComplete: s.require_complete_wishes, drawDate: s.draw_date },
     registrationOpen: Boolean(s.registration_open),
     history: all(`SELECT d.id, d.status, d.mode, d.participant_count, d.released, d.created_at, d.reset_at, d.reset_reason,
                          c.name AS created_by_name, r.name AS reset_by_name
@@ -610,7 +610,7 @@ router.get('/draw', (req, res) => {
 router.post('/draw/run', (req, res) => {
   if (String(req.body.confirm || '').trim().toUpperCase() !== 'DRAW') throw httpError(400, 'Type DRAW to confirm.');
   const result = privacy.runDraw(req.admin.id);
-  log(req, 'draw.completed', { drawId: result.drawId, participants: result.participants.length, released: result.released });
+  log(req, 'draw.completed', { drawId: result.drawId, participants: result.participants.length, released: result.released, locations: result.locations || undefined });
   mailer.notifyMany(result.participants, result.released ? 'assignment_available' : 'draw_completed');
   res.json({ ok: true, drawId: result.drawId, participants: result.participants.length, released: result.released });
 });

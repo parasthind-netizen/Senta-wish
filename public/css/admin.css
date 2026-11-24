@@ -77,6 +77,7 @@ table.t .actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap
 .tag.warn { background: color-mix(in srgb, var(--gold) 16%, transparent); color: var(--gold-soft); border-color: var(--gold-border); }
 .tag.bad { background: color-mix(in srgb, var(--red) 22%, transparent); color: #ffc7cf; border-color: color-mix(in srgb, var(--red-bright) 35%, transparent); }
 .tag.dim { background: rgba(255,255,255,.06); color: var(--muted); }
+.loc-groups { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 16px; }
 .row-error td { background: color-mix(in srgb, var(--red) 10%, transparent); }
 
 .form-grid { display: grid; gap: 4px 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }

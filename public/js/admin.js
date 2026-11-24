@@ -663,6 +663,7 @@
   /* ----------------------------------------------------------- draw */
   const DRAW_FIELDS = [
     { key: 'draw_mode', label: 'Draw style', type: 'select', wide: true, options: [['random', 'Fully random (any valid pairing)'], ['chain', 'Single gift chain (A→B→C→…→A)']], help: 'Both guarantee nobody draws themselves and everyone gives & receives exactly once.' },
+    { key: 'draw_by_location', label: 'Match within the same location', type: 'bool', help: 'Each person gets a colleague from their own office location only (e.g. Noida with Noida, Ahmedabad with Ahmedabad), using the Location on the Employees page. Each location needs at least 2 participants.' },
     { key: 'avoid_mutual_pairs', label: 'Avoid mutual pairs', type: 'bool', help: 'Prevents A→B and B→A at the same time (random style only).' },
     { key: 'require_complete_wishes', label: 'Require all 3 wishes', type: 'bool', help: 'Only registered employees with 3 wishes are included in the draw.' },
     { key: 'release_on_draw', label: 'Open gift boxes immediately', type: 'bool', help: 'If off, the names are drawn and sealed – you release the boxes later with one click (great for a live reveal moment).' },
@@ -673,9 +674,17 @@
     const d = await api('/api/admin/draw');
     const st = d.draw.status;
     const p = d.preview;
+    const locProblems = p.byLocation ? p.problems : [];
+    const blocked = p.eligibleCount < 3 || locProblems.length > 0;
+    const locations = p.byLocation && p.locations.length
+      ? `<p class="muted" style="margin:4px 0 8px">📍 Location-wise draw – everyone is matched only within their own location:</p>
+         <div class="loc-groups">${p.locations.map((l) => `<span class="tag ${l.count < 2 ? 'bad' : 'ok'}">${esc(l.name)} · ${l.count}</span>`).join('')}</div>`
+      : '';
     const hero = st === 'not_started'
       ? `<span class="big">🎲</span><h2>Ready when you are</h2><p class="muted">${p.eligibleCount} eligible participant${p.eligibleCount === 1 ? '' : 's'} · ${p.registeredCount} registered${p.excludedCount ? ` · <strong style="color:var(--gold-soft)">${p.excludedCount} excluded (wishes incomplete)</strong>` : ''}</p>
-         <button class="btn btn-primary btn-lg btn-glow" id="runDraw" ${p.eligibleCount < 3 ? 'disabled' : ''}>🎅 Run the Secret Santa draw</button>
+         ${locations}
+         ${locProblems.length ? `<div class="alert warn" style="text-align:left"><div>${locProblems.map((x) => `⚠️ ${esc(x)}`).join('<br>')}</div></div>` : ''}
+         <button class="btn btn-primary btn-lg btn-glow" id="runDraw" ${blocked ? 'disabled' : ''}>🎅 Run the Secret Santa draw</button>
          ${p.eligibleCount < 3 ? '<p class="muted" style="margin-top:10px">At least 3 eligible participants are needed.</p>' : ''}`
       : st === 'completed'
         ? `<span class="big">🔒</span><h2>Names drawn &amp; sealed</h2><p class="muted">${d.draw.participantCount} gift boxes are sealed. Employees can’t open them until you release.</p>
@@ -705,7 +714,7 @@
     const run = $('#runDraw');
     if (run) run.addEventListener('click', () => SS.modal({
       title: '🎅 Run the Secret Santa draw',
-      html: `<p>This will randomly pair <strong>${p.eligibleCount}</strong> participants, close registrations and lock all wish lists.</p>
+      html: `<p>This will randomly pair <strong>${p.eligibleCount}</strong> participants${p.byLocation ? ` <strong>within their own location</strong> (${p.locations.length} location${p.locations.length === 1 ? '' : 's'})` : ''}, close registrations and lock all wish lists.</p>
         ${p.excludedCount ? `<div class="alert warn">⚠️ ${p.excludedCount} registered employee(s) will be left out because their wishes are incomplete.</div>` : ''}
         <p class="muted">Gift boxes will ${A.settings.release_on_draw ? '<strong>open immediately</strong> and everyone is notified' : 'stay <strong>sealed</strong> until you release them'}.</p>
         <div class="field"><label>Type <strong>DRAW</strong> to confirm</label><input id="confirmDraw" autocomplete="off"></div>
