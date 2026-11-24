@@ -1,0 +1,22 @@
+# systemd unit – copy to /etc/systemd/system/techsara-santa.service
+[Unit]
+Description=Techsara Secret Santa
+After=network.target
+
+[Service]
+Type=simple
+User=santa
+Group=santa
+WorkingDirectory=/opt/techsara-santa
+ExecStart=/usr/bin/node --env-file=/opt/techsara-santa/.env server.js
+Restart=always
+RestartSec=3
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/techsara-santa
+
+[Install]
+WantedBy=multi-user.target

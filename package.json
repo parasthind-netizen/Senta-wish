@@ -1,0 +1,25 @@
+{
+  "name": "techsara-secret-santa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Techsara Secret Santa 2026 – employee portal, wish lists, secure draw engine and HR admin dashboard",
+  "main": "server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --env-file-if-exists=.env --watch server.js",
+    "create-admin": "node --env-file-if-exists=.env scripts/create-admin.js",
+    "seed-demo": "node --env-file-if-exists=.env scripts/seed-demo.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "express": "^5.3.0",
+    "multer": "^2.5.0",
+    "nodemailer": "^10.6.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}
