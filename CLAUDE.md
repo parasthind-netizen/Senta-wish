@@ -51,7 +51,8 @@ src/routes/admin.js     /api/admin/* (employees, import, photos, settings, brand
 public/                 index (landing), rules, login, app (employee dashboard), admin – each page = HTML shell + js/<page>.js
 public/js/common.js     Shared SS.* helpers: api(), esc(), theme, snow, lights, confetti, countdown, modal, toast
 scripts/                create-admin.js, seed-demo.js
-test/                   draw.test.js (algorithm), mailer.test.js (email logo), e2e.test.js (whole journey + privacy assertions)
+test/                   draw.test.js (algorithm), mailer.test.js (email layout), delivery.test.js (bulk pace, retries,
+                        resend – fake SMTP server), e2e.test.js (whole journey + privacy assertions)
 deploy/                 systemd unit, nginx site, backup script (see DEPLOY-EC2.md)
 data/                   (gitignored) santa.db, secret.key, uploads/public, uploads/photos
 ```
@@ -92,7 +93,9 @@ data/                   (gitignored) santa.db, secret.key, uploads/public, uploa
 - Use `httpError(status, message)` for user-facing errors; messages under 500 are shown to the user.
 - Times are stored as ISO strings (`nowIso()`); admin-entered dates are `YYYY-MM-DDTHH:mm` local time,
   so the server needs `TZ` set (e.g. `TZ=Asia/Kolkata` in `.env`).
-- Run as a **single process** – the rate limiter and scheduler are in-memory (no cluster mode).
+- Run as a **single process** – the rate limiter, scheduler and bulk email queue are in-memory (no cluster mode).
+  Bulk emails (`notifyMany`, "Resend failed") go out one at a time at `email_per_minute` over one pooled SMTP
+  connection, retrying 4xx refusals; emails left "pending" by a restart are marked failed on startup.
 
 ## Environment (.env)
 

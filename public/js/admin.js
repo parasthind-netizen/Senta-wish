@@ -798,21 +798,48 @@
 
   /* ------------------------------------------------- notifications */
   VIEWS.notifications = async (view) => {
-    const { notifications } = await api('/api/admin/notifications');
+    const data = await api('/api/admin/notifications');
+    const { notifications, failedCount, queued, perMinute } = data;
     const label = { sent: ['ok', 'Emailed'], not_configured: ['dim', 'In-app only'], failed: ['bad', 'Email failed'], pending: ['warn', 'Sending…'] };
-    view.innerHTML = `<p class="view-intro">Every notification sent to employees (latest 300). Messages never contain wish lists or assignments.</p>
-      <div class="toolbar"><input type="search" id="nq" placeholder="Search…"><span class="spacer"></span><a class="btn btn-ghost btn-sm" href="#/participation">📣 Send a reminder</a></div>
+    const sending = queued > 0 || notifications.some((n) => n.email_status === 'pending');
+    view.innerHTML = `<p class="view-intro">Every notification sent to employees (latest 300). Messages never contain wish lists or assignments.
+        Reminders to many people are emailed at a steady pace (${esc(perMinute)} per minute) so the mail server doesn’t refuse them.</p>
+      ${failedCount ? `<div class="alert warn"><div><strong>${failedCount} email${failedCount === 1 ? '' : 's'} failed.</strong> The reason is shown under each one.
+        Use <strong>Resend failed</strong> to send the same email again – they go out slowly, so it can take a few minutes.</div></div>` : ''}
+      ${sending ? `<div class="alert info"><div>📤 Sending${queued ? ` – ${queued} email${queued === 1 ? '' : 's'} still in the queue (about ${Math.max(1, Math.ceil(queued / (perMinute || 20)))} min)` : '…'}. This page refreshes by itself.</div></div>` : ''}
+      <div class="toolbar"><input type="search" id="nq" placeholder="Search…">
+        <select id="nf"><option value="">All deliveries</option><option value="failed">Email failed</option><option value="sent">Emailed</option><option value="pending">Sending…</option><option value="not_configured">In-app only</option></select>
+        <span class="spacer"></span>
+        ${failedCount ? `<button class="btn btn-primary btn-sm" id="resend">🔁 Resend failed (${failedCount})</button>` : ''}
+        <a class="btn btn-ghost btn-sm" href="#/participation">📣 Send a reminder</a></div>
       <div class="table-wrap"><table class="t"><thead><tr><th>When</th><th>Recipient</th><th>Type</th><th>Subject</th><th>Delivery</th></tr></thead><tbody id="nrows"></tbody></table></div>`;
-    const paint = (q = '') => {
-      const list = notifications.filter((n) => !q || [n.full_name, n.email, n.type, n.title].join(' ').toLowerCase().includes(q.toLowerCase()));
+    const paint = () => {
+      const q = $('#nq').value.toLowerCase();
+      const f = $('#nf').value;
+      const list = notifications.filter((n) => (!f || n.email_status === f) && (!q || [n.full_name, n.email, n.type, n.title].join(' ').toLowerCase().includes(q)));
       $('#nrows').innerHTML = list.length ? list.map((n) => {
         const [cls, txt] = label[n.email_status] || ['dim', n.email_status];
         return `<tr><td style="white-space:nowrap">${esc(SS.fmtDate(n.created_at))}</td><td>${esc(n.full_name)}<div class="muted" style="font-size:.8rem">${esc(n.email)}</div></td>
-          <td><span class="code-pill">${esc(n.type)}</span></td><td>${esc(n.title)}</td><td><span class="tag ${cls}" title="${esc(n.email_error || '')}">${esc(txt)}</span>${n.read_at ? ' <span class="tag dim">read</span>' : ''}</td></tr>`;
-      }).join('') : '<tr><td colspan="5"><div class="empty"><span class="big">📭</span>No notifications yet.</div></td></tr>';
+          <td><span class="code-pill">${esc(n.type)}</span></td><td>${esc(n.title)}</td>
+          <td><span class="tag ${cls}">${esc(txt)}</span>${n.read_at ? ' <span class="tag dim">read</span>' : ''}
+            ${n.email_status === 'failed' && n.email_error ? `<div class="fail-reason" title="${esc(n.email_error)}">${esc(n.email_error)}</div>` : ''}</td></tr>`;
+      }).join('') : '<tr><td colspan="5"><div class="empty"><span class="big">📭</span>Nothing here.</div></td></tr>';
     };
     paint();
-    $('#nq').addEventListener('input', (e) => paint(e.target.value));
+    $('#nq').addEventListener('input', paint);
+    $('#nf').addEventListener('change', paint);
+    const resend = $('#resend');
+    if (resend) resend.addEventListener('click', async () => {
+      if (!(await SS.confirm({ title: `Resend ${failedCount} failed email${failedCount === 1 ? '' : 's'}?`, message: `The same email goes to each person again, at ${perMinute} per minute. People already emailed are not sent anything.`, confirmText: 'Resend 🔁' }))) return;
+      SS.busy(resend, true, ' Queuing…');
+      try {
+        const r = await api('/api/admin/notifications/resend-failed', { method: 'POST' });
+        SS.toast(`Resending ${r.count} email${r.count === 1 ? '' : 's'} – about ${Math.max(1, r.minutes)} min.`, 'success');
+        route();
+      } catch (err) { toastErr(err); SS.busy(resend, false); }
+    });
+    // keep the list fresh while emails are going out
+    if (sending) setTimeout(() => { if (A.view === 'notifications' && document.body.contains(view)) route(); }, 8000);
   };
 
   /* ------------------------------------------------------ branding */
@@ -1092,6 +1119,7 @@
     { key: 'smtp_pass', label: 'SMTP password / app password', type: 'password' },
     { key: 'smtp_secure', label: 'Use SSL/TLS from the start (port 465)', type: 'bool', help: 'Leave off for port 587 (STARTTLS).' },
     { key: 'smtp_from', label: '“From” address', wide: true, placeholder: 'Techsara Secret Santa <santa@techsarasolutions.com>' },
+    { key: 'email_per_minute', label: 'Emails per minute (reminders to many people)', type: 'number', min: 1, max: 120, help: 'Gmail and Microsoft 365 refuse big bursts, so reminders go out at this pace. 20 is safe; Microsoft 365 allows up to 30.' },
     { key: 'site_url', label: 'Public site URL (used in email links)', wide: true, placeholder: 'https://santa.techsarasolutions.com' },
   ];
   const AUTO_FIELDS = [

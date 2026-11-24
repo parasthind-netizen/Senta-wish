@@ -145,6 +145,7 @@ table.t .actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap
 .mail-meta { display: grid; gap: 4px; font-size: 0.88rem; margin-bottom: 10px; padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,.05); overflow-wrap: anywhere; }
 .mail-meta span { display: inline-block; min-width: 64px; color: var(--muted); }
 .mail-frame { display: block; width: 100%; height: 560px; border: 0; border-radius: 14px; background: #06102a; }
+.fail-reason { margin-top: 6px; max-width: 280px; font-size: 0.76rem; line-height: 1.35; color: #ffc7cf; opacity: .85; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .activity { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 0.88rem; }
 .activity:last-child { border-bottom: 0; }
 .activity .when { color: var(--faint); white-space: nowrap; margin-left: auto; font-size: 0.8rem; }

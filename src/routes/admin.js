@@ -673,7 +673,21 @@ router.get('/notifications', (req, res) => {
   res.json({
     notifications: all(`SELECT n.id, n.type, n.title, n.email_status, n.email_error, n.read_at, n.created_at, e.full_name, e.email
                         FROM notifications n JOIN employees e ON e.id = n.employee_id ORDER BY n.id DESC LIMIT 300`),
+    // counted over all notifications, not just the 300 shown
+    failedCount: get("SELECT COUNT(*) AS c FROM notifications n JOIN employees e ON e.id = n.employee_id WHERE n.email_status = 'failed' AND e.active = 1").c,
+    queued: mailer.queuedEmails(),
+    perMinute: settings.getSetting('email_per_minute'),
   });
+});
+
+// Send the same email again to everyone whose email failed (or only the given notification ids)
+router.post('/notifications/resend-failed', limiter('resend-failed', 30, 60 * 60 * 1000, (r) => r.admin.id), (req, res) => {
+  if (!mailer.smtpConfigured()) throw httpError(400, 'Email is not configured. Turn on email and fill in the SMTP settings first.');
+  const ids = req.body && Array.isArray(req.body.ids) ? req.body.ids : null; // no body = resend all failed
+  const result = mailer.resendFailed(ids);
+  if (!result.count) throw httpError(400, 'There are no failed emails to resend.');
+  log(req, 'notifications.resent', { count: result.count });
+  res.json({ ok: true, ...result });
 });
 
 /** Whose name fills {{first_name}} / {{full_name}} in a test: the employee with that email, otherwise the admin. */

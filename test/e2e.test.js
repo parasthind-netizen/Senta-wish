@@ -158,6 +158,17 @@ test('full Secret Santa journey with privacy checks', async () => {
     if (!note) await new Promise((r) => setTimeout(r, 50));
   }
   assert.ok(note && note.body.includes('Hi again Person 🎅🎁'), 'the real reminder matches the preview');
+  const log = (await admin.get('/api/admin/notifications')).data;
+  assert.equal(log.failedCount, 0);
+  assert.equal(typeof log.queued, 'number');
+  assert.equal((await admin.post('/api/admin/notifications/resend-failed')).status, 400, 'no SMTP configured in tests');
+  assert.equal((await anon.post('/api/admin/notifications/resend-failed')).status, 401);
+  // with email switched on, a click with no request body must not crash (Express 5 leaves req.body undefined)
+  assert.equal((await admin.put('/api/admin/settings', { email_enabled: true, smtp_host: '127.0.0.1', smtp_port: 9, smtp_from: 'Santa <santa@example.com>' })).status, 200);
+  const nothing = await admin.post('/api/admin/notifications/resend-failed');
+  assert.equal(nothing.status, 400, JSON.stringify(nothing.data));
+  assert.match(nothing.data.error, /no failed emails/);
+  assert.equal((await admin.put('/api/admin/settings', { email_enabled: false })).status, 200);
   // --- admin never receives wish content
   const adminView = await admin.get('/api/admin/employees');
   assert.ok(!adminView.raw.includes('gift-1'), 'admin employee list must not contain wishes');

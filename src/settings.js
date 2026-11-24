@@ -151,6 +151,7 @@ const DEFAULTS = {
   site_url: 'http://localhost:3000',
   auto_reminder_enabled: true,
   reminder_hours_before: 48,
+  email_per_minute: 20, // bulk emails are sent at this pace (Gmail / Microsoft 365 refuse big bursts)
   email_enabled: false,
   smtp_host: '',
   smtp_port: 587,
@@ -198,7 +199,7 @@ const SCHEMA = {
   require_complete_wishes: { type: 'bool' }, draw_mode: { type: 'enum', values: ['random', 'chain'] },
   avoid_mutual_pairs: { type: 'bool' }, release_on_draw: { type: 'bool' }, draw_by_location: { type: 'bool' },
   site_url: str(300), auto_reminder_enabled: { type: 'bool' },
-  reminder_hours_before: { type: 'int', min: 1, max: 720 },
+  reminder_hours_before: { type: 'int', min: 1, max: 720 }, email_per_minute: { type: 'int', min: 1, max: 120 },
   email_enabled: { type: 'bool' }, smtp_host: str(200), smtp_port: { type: 'int', min: 1, max: 65535 },
   smtp_secure: { type: 'bool' }, smtp_user: str(200), smtp_pass: { type: 'secret', max: 300 }, smtp_from: str(200),
   email_bg_color: { type: 'color' }, email_card_color: { type: 'color' }, email_accent_color: { type: 'color' },

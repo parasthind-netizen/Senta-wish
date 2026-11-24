@@ -22,11 +22,16 @@ function getTransport() {
   const s = settings.loadAll();
   const key = JSON.stringify([s.smtp_host, s.smtp_port, s.smtp_secure, s.smtp_user, s.smtp_pass]);
   if (!transport || key !== transportKey) {
+    if (transport) transport.close();
     transport = nodemailer.createTransport({
       host: s.smtp_host,
       port: Number(s.smtp_port) || 587,
       secure: Boolean(s.smtp_secure),
       auth: s.smtp_user ? { user: s.smtp_user, pass: s.smtp_pass } : undefined,
+      // Reuse one logged-in connection: a new login per email makes Gmail refuse bulk sends
+      pool: true,
+      maxConnections: 1,
+      maxMessages: 50,
       disableFileAccess: true,
       disableUrlAccess: true,
     });
@@ -315,6 +320,15 @@ function previewHtml(subject, text) {
   return html;
 }
 
+/** Rate limits, a busy server or a dropped connection – worth trying again a bit later. */
+function isTemporary(err) {
+  const code = Number(err && err.responseCode);
+  // A server reply decides it: 4xx = "try later"; 5xx (e.g. Gmail's daily limit, unknown user) = don't retry now
+  if (code) return code >= 400 && code < 500;
+  return ['ECONNECTION', 'ETIMEDOUT', 'ESOCKET', 'ECONNRESET', 'EDNS', 'ESTREAM'].includes(err && err.code)
+    || /too many|try again|temporar|throttl/i.test(String(err && err.message));
+}
+
 async function sendMail(to, subject, text) {
   const s = settings.loadAll();
   if (!smtpConfigured(s)) return { status: 'not_configured' };
@@ -323,15 +337,26 @@ async function sendMail(to, subject, text) {
     return { status: 'sent' };
   } catch (err) {
     console.error('[mail] send failed:', err.message);
-    return { status: 'failed', error: String(err.message).slice(0, 300) };
+    return { status: 'failed', error: String(err.message).slice(0, 300), temporary: isTemporary(err) };
   }
 }
 
-/**
- * Create an in-app notification from a template and (if SMTP is configured) email it.
- * Templates must never contain assignment or wish details – they go to inboxes.
- */
-async function notify(employee, type, extraVars = {}) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const timing = { retryWaitsMs: [30_000, 90_000] }; // after a temporary refusal: wait 30 s, then 90 s (tests shorten it)
+
+/** Send, and retry temporary failures (e.g. Gmail's "try again later") twice with growing waits. */
+async function sendWithRetry(to, subject, text) {
+  let result = await sendMail(to, subject, text);
+  for (const wait of timing.retryWaitsMs) {
+    if (result.status !== 'failed' || !result.temporary) break;
+    await sleep(wait);
+    result = await sendMail(to, subject, text);
+  }
+  return result;
+}
+
+/** In-app notification row for an employee (email still to be sent). Never contains wishes or assignments. */
+function createNotification(employee, type, extraVars = {}) {
   const tpl = settings.getSetting('templates')[type];
   if (!tpl) throw new Error(`Unknown template ${type}`);
   const { subject: title, body } = renderTemplate(tpl, baseVars(employee, extraVars));
@@ -339,21 +364,76 @@ async function notify(employee, type, extraVars = {}) {
     'INSERT INTO notifications (employee_id, type, title, body, email_status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
     employee.id, type, title, body, 'pending', nowIso(),
   );
-  const id = Number(res.lastInsertRowid);
-  const result = await sendMail(employee.email, title, body);
-  run('UPDATE notifications SET email_status = ?, email_error = ? WHERE id = ?', result.status, result.error || null, id);
-  return { id, ...result };
+  return { id: Number(res.lastInsertRowid), email: employee.email, title, body };
 }
 
-/** Notify many employees sequentially in the background (gentle on SMTP rate limits). */
-function notifyMany(employees, type, extraVars = {}) {
-  const list = [...employees];
-  (async () => {
-    for (const emp of list) {
-      try { await notify(emp, type, extraVars); } catch (err) { console.error('[notify]', err.message); }
+async function deliver(n, send = sendMail) {
+  const result = await send(n.email, n.title, n.body);
+  run('UPDATE notifications SET email_status = ?, email_error = ? WHERE id = ?', result.status, result.error || null, n.id);
+  return result;
+}
+
+/**
+ * Create an in-app notification from a template and (if SMTP is configured) email it.
+ * Templates must never contain assignment or wish details – they go to inboxes.
+ */
+async function notify(employee, type, extraVars = {}) {
+  const n = createNotification(employee, type, extraVars);
+  return { id: n.id, ...(await deliver(n)) };
+}
+
+/* Bulk emails go out one at a time at a steady pace (email_per_minute), one batch after another.
+ * Sending everything at once makes Gmail / Microsoft 365 refuse part of it ("Email failed"). */
+let bulkChain = Promise.resolve();
+let bulkPending = 0;
+const bulkGapMs = () => Math.ceil(60_000 / (Number(settings.getSetting('email_per_minute')) || 20));
+
+function queueEmails(items) {
+  bulkPending += items.length;
+  bulkChain = bulkChain.then(async () => {
+    for (const n of items) {
+      let result = { status: 'failed' };
+      try { result = await deliver(n, sendWithRetry); } catch (err) { console.error('[notify]', err.message); }
+      bulkPending -= 1;
+      if (result.status !== 'not_configured') await sleep(bulkGapMs());
     }
-  })();
-  return list.length;
+  }).catch((err) => console.error('[notify]', err.message));
+  return items.length;
+}
+
+/** Notify many employees: in-app notifications appear at once, emails follow at a steady pace. */
+function notifyMany(employees, type, extraVars = {}) {
+  const items = [];
+  for (const emp of employees) {
+    try { items.push(createNotification(emp, type, extraVars)); } catch (err) { console.error('[notify]', err.message); }
+  }
+  return queueEmails(items);
+}
+
+/** Send the same email again to everyone whose email failed (optionally only these notification ids). */
+function resendFailed(ids = null) {
+  const only = Array.isArray(ids) ? ids.map(Number).filter(Number.isInteger) : null;
+  const rows = all(`SELECT n.id, n.title, n.body, e.email FROM notifications n JOIN employees e ON e.id = n.employee_id
+                    WHERE n.email_status = 'failed' AND e.active = 1 ORDER BY n.id`)
+    .filter((r) => !only || only.includes(r.id));
+  for (const r of rows) run("UPDATE notifications SET email_status = 'pending', email_error = NULL WHERE id = ?", r.id);
+  queueEmails(rows);
+  return { count: rows.length, minutes: Math.ceil((rows.length * bulkGapMs()) / 60_000) };
+}
+
+/** Emails still waiting in the bulk queue (for the admin log). */
+const queuedEmails = () => bulkPending;
+
+// The queue lives in memory: emails still "pending" from before a restart (e.g. a deploy) were never sent.
+// Mark them failed with a clear reason so "Resend failed" picks them up.
+run("UPDATE notifications SET email_status = 'failed', email_error = ? WHERE email_status = 'pending'",
+  'Not sent – the server restarted before this email went out. Use “Resend failed” to send it.');
+
+/** Close the pooled SMTP connection (tests / shutdown). */
+function closeTransport() {
+  if (transport) transport.close();
+  transport = null;
+  transportKey = '';
 }
 
 /** OTP email – not stored as an in-app notification. Logged to console when SMTP is off (local dev). */
@@ -383,5 +463,5 @@ function unreadCount(employeeId) {
 }
 
 module.exports = {
-  notify, notifyMany, sendOtp, sendMail, composeEmail, sampleVars, renderTemplate, previewHtml, emojify, smtpConfigured, listForEmployee, unreadCount, render, baseVars,
+  notify, notifyMany, resendFailed, queuedEmails, isTemporary, timing, closeTransport, sendOtp, sendMail, composeEmail, sampleVars, renderTemplate, previewHtml, emojify, smtpConfigured, listForEmployee, unreadCount, render, baseVars,
 };
