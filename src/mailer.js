@@ -145,7 +145,7 @@ function emailLogo(s = settings.loadAll()) {
 const uniqueMarker = (ref, bg) =>
   `<span style="color:${bg};opacity:0;font-size:1px;line-height:1px;mso-hide:all" aria-hidden="true">${ref}</span>`;
 
-/* ---------- Email look: logo colours, script heading, pine-branch corners ---------- */
+/* ---------- Email look: logo colours, pine-branch corners ---------- */
 const DECOR = { w: 120, h: 102 }; // display size of each corner branch (the PNGs are drawn at 2x)
 const DECOR_DIR = path.join(__dirname, '..', 'public', 'img');
 let decorCache = null;
@@ -162,9 +162,6 @@ function emailDecorations() {
   return decorCache;
 }
 
-// Gmail and Outlook don't load web fonts, so each stack falls back to a similar font installed on the device
-const SCRIPT_FALLBACK = "'Segoe Script','Snell Roundhand','Apple Chancery','Brush Script MT',cursive";
-const SERIF = "'Cormorant Garamond',Georgia,'Times New Roman',serif";
 const SANS = "'Segoe UI',Arial,sans-serif";
 
 /** Darken (amount < 0) or lighten a #rrggbb colour. */
@@ -179,22 +176,13 @@ function htmlEmail(subject, body, logo = null, ref = crypto.randomBytes(6).toStr
   const card = s.email_card_color || '#262f7e';
   const bg = s.email_bg_color || '#151a4b';
   const gold = s.email_accent_color || '#e9b949';
-  const cream = '#fbf3df';
-  const scriptFont = settings.EMAIL_SCRIPT_FONTS.includes(s.email_heading_font) ? s.email_heading_font : 'Great Vibes';
-  const script = `'${scriptFont}',${SCRIPT_FALLBACK}`;
-  const bodyStyle = {
-    serif: `font-family:${SERIF};font-size:18px;line-height:1.6`,
-    script: `font-family:${script};font-size:21px;line-height:1.5`,
-    sans: `font-family:${SANS};font-size:15px;line-height:1.6`,
-  }[s.email_body_font] || `font-family:${SERIF};font-size:18px;line-height:1.6`;
   const marker = uniqueMarker(ref, card);
+  // Logo blue across the top half, fading a little lighter towards the bottom
+  const cardBg = `background-color:${card};background-image:linear-gradient(180deg,${card} 0%,${card} 50%,${shade(card, 0.2)} 100%)`;
 
-  const paras = escapeHtml(body)
+  const paragraphs = escapeHtml(body)
     .replace(/(https?:\/\/[^\s<]+)/g, `<a href="$1" style="color:${gold}">$1</a>`)
-    .split(/\n{2,}/);
-  // "Hi Riya," on its own line is written in the script font, like a letter
-  const greeting = paras.length > 1 && /^(hi|hello|hey|dear)\b[^\n<]{0,60}$/i.test(paras[0].trim()) ? paras.shift() : '';
-  const paragraphs = paras.map((p) => `<p style="margin:0 0 14px">${p.replace(/\n/g, '<br>')}</p>`).join('');
+    .split(/\n{2,}/).map((p) => `<p style="margin:0 0 14px;line-height:1.6">${p.replace(/\n/g, '<br>')}</p>`).join('');
 
   const left = decor.find((d) => d.side === 'left');
   const right = decor.find((d) => d.side === 'right');
@@ -205,14 +193,12 @@ function htmlEmail(subject, body, logo = null, ref = crypto.randomBytes(6).toStr
     ? `<img src="cid:${LOGO_CID}" width="${logo.width}" height="${logo.height}" alt="${escapeHtml(s.company_name)}" style="display:block;margin:0 auto;border:0;outline:none;text-decoration:none;width:${logo.width}px;height:${logo.height}px">`
     : '<div style="font-size:34px">🎄🎁🎅</div>';
   const rule = `<td width="36" style="width:36px"><div style="height:1px;line-height:1px;font-size:0;background:${gold}">&nbsp;</div></td>`;
-  const fonts = `https://fonts.googleapis.com/css2?family=${scriptFont.replace(/ /g, '+')}&family=Cormorant+Garamond:ital,wght@0,500;1,500&display=swap`;
 
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <link href="${fonts}" rel="stylesheet"></head>
-  <body style="margin:0;background:${bg};font-family:${SANS};color:${cream}">
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+  <body style="margin:0;background:${bg};font-family:${SANS};color:#f4f1ea">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${bg};padding:32px 12px">
   <tr><td align="center">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:${card};background-image:linear-gradient(180deg,${card} 0%,${shade(card, -0.3)} 100%);border:2px solid ${gold};border-radius:18px;overflow:hidden">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;${cardBg};border:2px solid ${gold};border-radius:18px;overflow:hidden">
       <tr><td style="background:linear-gradient(90deg,${s.theme_red},${s.theme_green});height:6px;font-size:0;line-height:0">&nbsp;</td></tr>
       <tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
         ${corner(left, 'left')}
@@ -223,11 +209,10 @@ function htmlEmail(subject, body, logo = null, ref = crypto.randomBytes(6).toStr
         <table role="presentation" cellpadding="0" cellspacing="0" align="center"><tr>${rule}
           <td align="center" style="padding:0 12px;font-family:${SANS};font-size:13px;letter-spacing:3px;color:${gold};text-transform:uppercase">${escapeHtml(s.event_title)}</td>${rule}
         </tr></table></td></tr>
-      <tr><td align="center" style="padding:12px 28px 0">
-        <h1 style="margin:0;font-family:${script};font-size:38px;font-weight:400;line-height:1.25;color:${cream}">${escapeHtml(subject)}</h1></td></tr>
-      <tr><td style="padding:22px 36px 6px;color:#eef0fa;${bodyStyle}">
-        ${greeting ? `<p style="margin:0 0 12px;font-family:${script};font-size:30px;line-height:1.3;color:${cream}">${greeting}</p>` : ''}${paragraphs}</td></tr>
-      <tr><td style="padding:6px 32px 28px;text-align:center;font-family:${SERIF};font-size:15px;color:#c9cdee;font-style:italic">${escapeHtml(s.slogan)}${marker}</td></tr>
+      <tr><td align="center" style="padding:12px 32px 0">
+        <h1 style="font-size:22px;margin:0;color:#fff;font-family:${SANS}">${escapeHtml(subject)}</h1></td></tr>
+      <tr><td style="padding:20px 32px 8px;font-size:15px;color:#eef0fa;font-family:${SANS}">${paragraphs}</td></tr>
+      <tr><td style="padding:8px 32px 28px;text-align:center;font-size:12px;color:#dde1f5;font-style:italic;font-family:${SANS}">${escapeHtml(s.slogan)}${marker}</td></tr>
     </table>
   </td></tr></table></body></html>`;
 }

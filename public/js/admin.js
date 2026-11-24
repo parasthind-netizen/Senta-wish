@@ -1098,13 +1098,10 @@
     { key: 'auto_reminder_enabled', label: 'Automatic deadline reminder', type: 'bool', help: 'Sends the “Deadline reminder” once to anyone not finished, shortly before the registration deadline.' },
     { key: 'reminder_hours_before', label: 'Hours before the deadline', type: 'number', min: 1, max: 720 },
   ];
-  const EMAIL_SCRIPT_FONTS = ['Great Vibes', 'Parisienne', 'Alex Brush', 'Allura', 'Pinyon Script', 'Dancing Script', 'Satisfy', 'Cookie'];
   const LOOK_FIELDS = [
     { key: 'email_card_color', label: 'Card colour', type: 'color', help: 'Default #262f7e – the logo blue.' },
     { key: 'email_bg_color', label: 'Background around the card', type: 'color' },
     { key: 'email_accent_color', label: 'Accent – border, lines, links', type: 'color', help: 'Default #e9b949 – the logo gold.' },
-    { key: 'email_heading_font', label: 'Subject line font', type: 'select', options: EMAIL_SCRIPT_FONTS.map((f) => [f, f]) },
-    { key: 'email_body_font', label: 'Message font', type: 'select', options: [['serif', 'Elegant serif (Cormorant Garamond)'], ['script', 'Script – same as the subject line'], ['sans', 'Clean (Segoe UI)']], help: 'The “Hi Name,” greeting is always in the script font.' },
     { key: 'email_decorations', label: 'Pine branches in the top corners', type: 'bool' },
   ];
   const TEMPLATE_NAMES = {
@@ -1125,7 +1122,7 @@
           <div id="testTags"></div>
           <div class="form-actions"><button class="btn btn-ghost btn-sm" id="testPreview">👁 Preview</button><button class="btn btn-primary btn-sm" id="testBtn">📨 Send test</button></div></div>
         ${settingsPanel({ id: 'look', title: '🎨 Email look', fields: LOOK_FIELDS, saveLabel: 'Save look',
-          intro: 'Colours match the Techsara logo. Gmail and Outlook don’t load custom fonts, so they show a similar script font installed on the phone or computer; Apple Mail and iPhone Mail show the exact font.',
+          intro: 'Colours match the Techsara logo: the card is logo blue, fading a little lighter towards the bottom, with a gold border.',
           extra: '<div class="form-actions" style="justify-content:flex-start;margin-bottom:-8px"><button class="btn btn-ghost btn-sm" id="lookPreview">👁 Preview the look</button></div>' })}
         ${settingsPanel({ id: 'auto', title: '⏰ Automatic reminders', fields: AUTO_FIELDS })}</div>
       <div class="panel" id="tplPanel"><div class="panel-head"><h2>✍️ Notification templates</h2><button class="btn btn-ghost btn-xs" id="tplReset">Restore defaults</button></div>

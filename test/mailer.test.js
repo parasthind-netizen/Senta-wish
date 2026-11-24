@@ -94,7 +94,7 @@ test('the admin preview shows the logo as a data: image (no cid:)', () => {
   assert.ok(html.includes('src="data:image/png;base64,'));
 });
 
-test('email look: logo colours, script heading, corner branches (can be turned off)', () => {
+test('email look: logo colours, bottom fade, plain heading font, corner branches (can be turned off)', () => {
   const mail = mailer.composeEmail('Your wishes are tucked in 🎁', 'Hi Riya,\n\nYour wishes are safe.');
   const branches = mail.attachments.filter((a) => a.filename.startsWith('branch-'));
   assert.equal(branches.length, 2);
@@ -103,14 +103,15 @@ test('email look: logo colours, script heading, corner branches (can be turned o
     assert.ok(mail.html.includes(`src="cid:${b.cid}"`));
   }
   assert.ok(mail.html.includes('#262f7e') && mail.html.includes('#e9b949'), 'logo blue + gold by default');
-  assert.match(mail.html, /<h1 style="[^"]*font-family:'Great Vibes'[^"]*">Your wishes are tucked in 🎁<\/h1>/);
-  assert.match(mail.html, /font-family:'Great Vibes'[^"]*">Hi Riya,<\/p>/, 'greeting in the script font');
+  assert.ok(mail.html.includes('linear-gradient(180deg,#262f7e 0%,#262f7e 50%,'), 'blue top half, fading towards the bottom');
+  assert.match(mail.html, /<h1 style="font-size:22px[^"]*'Segoe UI'[^"]*">Your wishes are tucked in 🎁<\/h1>/);
+  assert.ok(!mail.html.includes('Great Vibes') && !mail.html.includes('fonts.googleapis'), 'original fonts, no web fonts');
 
-  settings.saveMany({ email_decorations: false, email_card_color: '#112233', email_heading_font: 'Parisienne', email_body_font: 'sans' });
+  settings.saveMany({ email_decorations: false, email_card_color: '#112233' });
   const plain = mailer.composeEmail('Hello', 'Body');
   assert.equal(plain.attachments.filter((a) => a.filename.startsWith('branch-')).length, 0);
-  assert.ok(plain.html.includes('#112233') && plain.html.includes("'Parisienne'"));
-  settings.saveMany({ email_decorations: true, email_card_color: '#262f7e', email_heading_font: 'Great Vibes', email_body_font: 'serif' });
+  assert.ok(plain.html.includes('#112233'));
+  settings.saveMany({ email_decorations: true, email_card_color: '#262f7e' });
 });
 
 test.after(() => {

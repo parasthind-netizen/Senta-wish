@@ -39,8 +39,7 @@ src/draw.js             Pure draw algorithm (secure shuffle, derangement, locati
 src/auth.js             Cookie sessions (sha256 of token stored), CSRF, role guards, same-origin check
 src/mailer.js           Nodemailer SMTP, {{placeholder}} templates, in-app notifications. The logo is embedded
                         inline (cid:), using the small `logo_email` copy the admin page makes at upload time,
-                        with the corner branches from public/img/email-branch-*.png. Look (colours, fonts) =
-                        `email_*` settings; Gmail/Outlook ignore web fonts, so font stacks end in installed fonts
+                        with the corner branches from public/img/email-branch-*.png. Colours = `email_*` settings
 src/otp.js              Issue/verify 6-digit OTPs (hashed, 10 min, 5 attempts, resend throttle)
 src/scheduler.js        Every 5 min: auto deadline reminder + auto-close registration at deadline
 src/audit.js            Audit log writer
