@@ -546,6 +546,32 @@ input[type=color] { width: 54px; height: 42px; padding: 3px; border-radius: 10px
   .ornaments { display: none; }
   .gb-tag { right: -6px; }
 }
+/* Background music toggle (bottom-left, employee-facing pages) */
+.music-btn {
+  position: fixed; left: 18px; bottom: 18px; z-index: 120; display: inline-flex; align-items: center; gap: 8px;
+  height: 46px; min-width: 46px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--gold-border);
+  background: color-mix(in srgb, var(--midnight) 85%, transparent); backdrop-filter: blur(8px);
+  color: #fff; font: inherit; font-size: 0.9rem; cursor: pointer; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s, border-color 0.15s;
+}
+.music-btn:hover { transform: translateY(-2px); border-color: var(--gold); }
+.music-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.music-btn .music-icon { font-size: 1.15rem; line-height: 1; }
+.music-btn .eq { display: none; align-items: flex-end; gap: 2px; height: 14px; }
+.music-btn.playing .eq { display: inline-flex; }
+.music-btn .eq i { width: 3px; height: 4px; background: var(--gold); border-radius: 2px; animation: eq 0.9s ease-in-out infinite; }
+.music-btn .eq i:nth-child(2) { animation-delay: -0.3s; }
+.music-btn .eq i:nth-child(3) { animation-delay: -0.6s; }
+@keyframes eq { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+.music-btn .music-hint { display: none; white-space: nowrap; color: var(--gold); }
+.music-btn.needs-tap .music-hint { display: inline; }
+.music-btn.needs-tap { animation: music-pulse 2s ease-in-out infinite; }
+@keyframes music-pulse {
+  0%, 100% { box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35), 0 0 0 0 color-mix(in srgb, var(--gold) 50%, transparent); }
+  50% { box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35), 0 0 0 9px transparent; }
+}
+@media (max-width: 560px) { .music-btn { left: 12px; bottom: 12px; height: 42px; min-width: 42px; } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
 }

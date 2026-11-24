@@ -128,6 +128,11 @@ const DEFAULTS = {
   snow_density: 'medium',
   lights_enabled: true,
 
+  // Background music (tracks are uploaded in Admin → Background Music)
+  music_enabled: true,
+  music_volume: 35, // percent
+  music_shuffle: false,
+
   // Access & security
   allowed_email_domains: 'techsarasolutions.com',
   login_method: 'both', // password | otp | both
@@ -179,6 +184,7 @@ const SCHEMA = {
   theme_midnight: { type: 'color' }, theme_red: { type: 'color' }, theme_green: { type: 'color' }, theme_gold: { type: 'color' },
   snow_enabled: { type: 'bool' }, snow_density: { type: 'enum', values: ['light', 'medium', 'heavy'] },
   lights_enabled: { type: 'bool' },
+  music_enabled: { type: 'bool' }, music_volume: { type: 'int', min: 1, max: 100 }, music_shuffle: { type: 'bool' },
   allowed_email_domains: str(500), login_method: { type: 'enum', values: ['password', 'otp', 'both'] },
   require_email_otp_signup: { type: 'bool' }, signup_require_employee_id: { type: 'bool' }, allow_employee_photo_upload: { type: 'bool' },
   require_complete_wishes: { type: 'bool' }, draw_mode: { type: 'enum', values: ['random', 'chain'] },
@@ -199,6 +205,7 @@ const PUBLIC_KEYS = [
   'how_it_works', 'rules_title', 'rules_intro', 'rules', 'join_message', 'wishes_intro', 'wish_saved_message',
   'waiting_message', 'locked_message', 'reveal_button_text', 'reveal_heading', 'reveal_mission', 'wish_examples',
   'theme_midnight', 'theme_red', 'theme_green', 'theme_gold', 'snow_enabled', 'snow_density', 'lights_enabled',
+  'music_enabled', 'music_volume', 'music_shuffle',
   'login_method', 'require_email_otp_signup', 'signup_require_employee_id', 'allow_employee_photo_upload', 'allowed_email_domains',
 ];
 

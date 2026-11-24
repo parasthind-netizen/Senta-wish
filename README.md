@@ -42,8 +42,8 @@ the recipient's name, team, wishes, links and budget.
 actions, per-employee photo upload); CSV/Excel import with preview; bulk photo upload by file name;
 registration open/close; reminders to targeted groups; CSV export; draw engine (random or single chain,
 avoid mutual pairs, require complete wishes, sealed release for a live reveal moment, guarded reset);
-**full customization** of every text, logo, hero image, photo gallery, dates, budget, steps, rules,
-messages, colours (with presets), snow and lights, email templates, SMTP, allowed email domains and
+**full customization** of every text, logo, hero image, photo gallery, background music playlist, dates,
+budget, steps, rules, messages, colours (with presets), snow and lights, email templates, SMTP, allowed email domains and
 login method; HR admin accounts with roles; audit log; and a logged emergency override.
 
 ## Privacy & security

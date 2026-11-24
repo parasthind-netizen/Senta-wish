@@ -41,6 +41,11 @@ const brandingUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 2, fields: 10 },
 }).fields([{ name: 'image', maxCount: 1 }, { name: 'email_image', maxCount: 1 }]);
+const MAX_AUDIO_MB = 20;
+const audioUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_AUDIO_MB * 1024 * 1024, files: 1, fields: 10 },
+});
 const sheetUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 5 },
@@ -66,6 +71,27 @@ function saveImage(file, dir, prefix) {
   return name;
 }
 
+/** Detect audio type from magic bytes: MP3, M4A/AAC (MP4 container), OGG or WAV. */
+function audioExtension(buf) {
+  if (!buf || buf.length < 12) return null;
+  if (buf.toString('ascii', 0, 3) === 'ID3') return 'mp3';
+  if (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0 && (buf[1] & 0x06) !== 0) return 'mp3'; // MPEG audio frame sync
+  if (buf.toString('ascii', 4, 8) === 'ftyp') return 'm4a';
+  if (buf.toString('ascii', 0, 4) === 'OggS') return 'ogg';
+  if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WAVE') return 'wav';
+  return null;
+}
+
+/** Save an uploaded audio buffer to dir with a random name. Returns the file name. */
+function saveAudio(file, dir, prefix) {
+  if (!file) { const e = new Error('Please choose a music file to upload.'); e.status = 400; throw e; }
+  const ext = audioExtension(file.buffer);
+  if (!ext) { const e = new Error('Only MP3, M4A, OGG or WAV music files are allowed.'); e.status = 400; throw e; }
+  const name = `${prefix}-${randomToken(12)}.${ext}`;
+  fs.writeFileSync(path.join(dir, name), file.buffer);
+  return name;
+}
+
 function removeFile(dir, name) {
   if (!name || name.includes('/') || name.includes('\\') || name.includes('..')) return;
   fs.rm(path.join(dir, name), { force: true }, () => {});
@@ -84,4 +110,5 @@ const EMAIL_RE = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"
 const isEmail = (v) => typeof v === 'string' && v.length <= 254 && EMAIL_RE.test(v);
 const clean = (v, max = 200) => (v === null || v === undefined ? '' : String(v).trim().slice(0, max));
 
-module.exports = { rateLimit, limiter, imageUpload, brandingUpload, sheetUpload, imageExtension, saveImage, removeFile, asyncRoute, httpError, isEmail, clean };
+module.exports = { rateLimit, limiter, imageUpload, brandingUpload, audioUpload, MAX_AUDIO_MB, sheetUpload, imageExtension, saveImage,
+  audioExtension, saveAudio, removeFile, asyncRoute, httpError, isEmail, clean };

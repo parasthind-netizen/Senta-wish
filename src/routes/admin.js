@@ -11,7 +11,9 @@ const settings = require('../settings');
 const privacy = require('../privacy');
 const mailer = require('../mailer');
 const { audit, adminActor } = require('../audit');
-const { limiter, httpError, clean, isEmail, imageUpload, brandingUpload, sheetUpload, saveImage, removeFile } = require('../util');
+const {
+  limiter, httpError, clean, isEmail, imageUpload, brandingUpload, audioUpload, sheetUpload, saveImage, saveAudio, removeFile,
+} = require('../util');
 
 const router = express.Router();
 const OVERRIDE_MINUTES = 15;
@@ -540,6 +542,52 @@ router.delete('/gallery/:id', (req, res) => {
   run('DELETE FROM gallery WHERE id = ?', g.id);
   removeFile(PUBLIC_UPLOAD_DIR, g.file);
   log(req, 'gallery.removed', { id: g.id });
+  res.json({ ok: true });
+});
+
+/* --------------------------------------------------------- background music */
+
+const listTracks = () => all('SELECT id, file, title, sort_order FROM music_tracks ORDER BY sort_order, id')
+  .map((t) => ({ ...t, url: publicUrl(t.file) }));
+
+router.get('/music', (req, res) => {
+  res.json({ items: listTracks() });
+});
+
+router.post('/music', audioUpload.single('audio'), (req, res) => {
+  const name = saveAudio(req.file, PUBLIC_UPLOAD_DIR, 'music');
+  const max = get('SELECT COALESCE(MAX(sort_order), 0) AS m FROM music_tracks').m;
+  const title = clean(req.body.title, 120) || `Track ${max + 1}`;
+  const r = run('INSERT INTO music_tracks (file, title, sort_order, created_at) VALUES (?, ?, ?, ?)', name, title, max + 1, nowIso());
+  log(req, 'music.added', { id: Number(r.lastInsertRowid), title });
+  res.json({ ok: true, id: Number(r.lastInsertRowid), url: publicUrl(name) });
+});
+
+// New playlist order: { ids: [3, 1, 2] }
+router.put('/music/order', (req, res) => {
+  const ids = Array.isArray(req.body.ids) ? req.body.ids.map(Number) : [];
+  const existing = all('SELECT id FROM music_tracks').map((t) => t.id);
+  if (ids.length !== existing.length || !existing.every((id) => ids.includes(id))) throw httpError(400, 'Track list is out of date – please reload.');
+  tx(() => ids.forEach((id, i) => run('UPDATE music_tracks SET sort_order = ? WHERE id = ?', i + 1, id)));
+  log(req, 'music.reordered');
+  res.json({ ok: true, items: listTracks() });
+});
+
+router.put('/music/:id', (req, res) => {
+  const t = get('SELECT * FROM music_tracks WHERE id = ?', Number(req.params.id));
+  if (!t) throw httpError(404, 'Track not found.');
+  const title = clean(req.body.title, 120);
+  if (!title) throw httpError(400, 'Please enter a title.');
+  run('UPDATE music_tracks SET title = ? WHERE id = ?', title, t.id);
+  res.json({ ok: true });
+});
+
+router.delete('/music/:id', (req, res) => {
+  const t = get('SELECT * FROM music_tracks WHERE id = ?', Number(req.params.id));
+  if (!t) throw httpError(404, 'Track not found.');
+  run('DELETE FROM music_tracks WHERE id = ?', t.id);
+  removeFile(PUBLIC_UPLOAD_DIR, t.file);
+  log(req, 'music.removed', { id: t.id, title: t.title });
   res.json({ ok: true });
 });
 

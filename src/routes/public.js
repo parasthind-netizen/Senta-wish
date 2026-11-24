@@ -16,6 +16,7 @@ router.get('/config', (req, res) => {
     drawStatus: draw.status,
     participantCount: get('SELECT COUNT(*) AS c FROM registrations r JOIN employees e ON e.id = r.employee_id AND e.active = 1').c,
     gallery: all('SELECT file, caption FROM gallery ORDER BY sort_order, id').map((g) => ({ url: `/uploads/${g.file}`, caption: g.caption })),
+    music: all('SELECT file, title FROM music_tracks ORDER BY sort_order, id').map((t) => ({ url: `/uploads/${t.file}`, title: t.title })),
     serverTime: new Date().toISOString(),
   });
 });

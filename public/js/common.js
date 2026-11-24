@@ -279,6 +279,116 @@
     if (s.lights_enabled !== false) SS.lights(SS.$('.lights'));
     else { const l = SS.$('.lights'); if (l) l.remove(); }
     if (s.snow_enabled !== false) SS.snow(s.snow_density);
+    SS.music(s, SS.config && SS.config.music);
+  };
+
+  /* ------------------------------------------------- background music */
+  // Plays HR's playlist on the employee-facing pages. Browsers only allow sound once the visitor has
+  // interacted with the site, so when autoplay is blocked it starts on the first click / tap / key.
+  // The mute choice is remembered per browser; the song + position carry over from page to page.
+  SS.music = function music(s, tracks) {
+    if (SS._music || !s || !s.music_enabled || !Array.isArray(tracks) || !tracks.length) return;
+    SS._music = true;
+    const STATE_KEY = 'ss_music_state';
+    const MUTE_KEY = 'ss_music_muted';
+    const GESTURES = ['pointerdown', 'pointerup', 'touchend', 'keydown', 'click'];
+    const read = (store, key) => { try { return window[store].getItem(key); } catch { return null; } };
+    const write = (store, key, v) => { try { window[store].setItem(key, v); } catch { /* storage blocked */ } };
+    const signature = tracks.map((t) => t.url).join('|');
+    const newOrder = () => {
+      const a = tracks.map((_, i) => i);
+      if (s.music_shuffle) for (let i = a.length - 1; i > 0; i -= 1) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+      return a;
+    };
+
+    let saved = null;
+    try { saved = JSON.parse(read('sessionStorage', STATE_KEY) || 'null'); } catch { saved = null; }
+    const resume = Boolean(saved && saved.sig === signature && Array.isArray(saved.order) && saved.order.length === tracks.length);
+    let order = resume ? saved.order : newOrder();
+    let pos = resume ? Math.min(Math.max(0, Number(saved.pos) || 0), order.length - 1) : 0;
+    const startAt = resume ? Number(saved.time) || 0 : 0;
+    let muted = read('localStorage', MUTE_KEY) === '1';
+    let failures = 0;
+    let pausedByHide = false;
+    const volume = Math.min(1, Math.max(0.01, (Number(s.music_volume) || 35) / 100));
+
+    const audio = new Audio();
+    audio.preload = 'auto';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'music-btn';
+    btn.innerHTML = '<span class="music-icon" aria-hidden="true"></span><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><span class="music-hint">Tap anywhere for music 🎶</span>';
+    document.body.appendChild(btn);
+
+    const current = () => tracks[order[pos]] || tracks[0];
+    const save = () => write('sessionStorage', STATE_KEY, JSON.stringify({ sig: signature, order, pos, time: audio.currentTime || 0 }));
+    const paint = () => {
+      btn.classList.toggle('playing', !muted && !audio.paused);
+      btn.classList.toggle('muted', muted);
+      const label = muted ? 'Music is off – click to play' : `Now playing: ${current().title || 'Christmas music'} – click to mute`;
+      btn.title = label;
+      btn.setAttribute('aria-label', label);
+      SS.$('.music-icon', btn).textContent = muted ? '🔇' : '🎵';
+    };
+    const load = (time = 0) => {
+      audio.src = current().url;
+      if (time > 0) {
+        audio.addEventListener('loadedmetadata', () => {
+          try { audio.currentTime = Math.min(time, Math.max(0, (audio.duration || time) - 1)); } catch { /* ignore */ }
+        }, { once: true });
+      }
+    };
+    const fadeIn = () => {
+      let v = 0;
+      const step = () => { v = Math.min(volume, v + volume / 20); audio.volume = v; if (v < volume) setTimeout(step, 60); };
+      audio.volume = 0;
+      step();
+    };
+    const play = () => {
+      if (muted || document.hidden) return;
+      if (!audio.src) load(startAt);
+      audio.play().then(() => { failures = 0; }).catch((err) => {
+        if (err && err.name === 'NotAllowedError') btn.classList.add('needs-tap'); // autoplay blocked – wait for a gesture
+        paint();
+      });
+    };
+    const next = () => {
+      pos += 1;
+      if (pos >= order.length) { pos = 0; if (s.music_shuffle && order.length > 2) order = newOrder(); }
+      load();
+      play();
+    };
+    const onGesture = (e) => { if (!btn.contains(e.target) && audio.paused) play(); };
+
+    let faded = false;
+    audio.addEventListener('playing', () => {
+      btn.classList.remove('needs-tap');
+      GESTURES.forEach((t) => document.removeEventListener(t, onGesture, true));
+      if (!faded) { faded = true; fadeIn(); }
+      paint();
+    });
+    audio.addEventListener('pause', paint);
+    audio.addEventListener('ended', next);
+    audio.addEventListener('error', () => { failures += 1; if (failures < tracks.length) next(); else paint(); });
+    let lastSave = 0;
+    audio.addEventListener('timeupdate', () => { const n = Date.now(); if (n - lastSave > 2000) { lastSave = n; save(); } });
+    window.addEventListener('pagehide', save);
+    // Pause while the tab is in the background, carry on when the visitor comes back
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { if (!audio.paused) { pausedByHide = true; audio.pause(); } save(); }
+      else if (pausedByHide) { pausedByHide = false; play(); }
+    });
+    btn.addEventListener('click', () => {
+      if (!muted && audio.paused) { play(); return; } // autoplay was blocked – this click starts the music
+      muted = !muted;
+      write('localStorage', MUTE_KEY, muted ? '1' : '0');
+      if (muted) { audio.pause(); btn.classList.remove('needs-tap'); } else play();
+      paint();
+    });
+
+    GESTURES.forEach((t) => document.addEventListener(t, onGesture, true));
+    paint();
+    play();
   };
 
   /** Standard public-page nav. */

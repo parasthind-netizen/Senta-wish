@@ -42,10 +42,10 @@ src/mailer.js           Nodemailer SMTP, {{placeholder}} templates, in-app notif
 src/otp.js              Issue/verify 6-digit OTPs (hashed, 10 min, 5 attempts, resend throttle)
 src/scheduler.js        Every 5 min: auto deadline reminder + auto-close registration at deadline
 src/audit.js            Audit log writer
-src/util.js             Rate limiter, image upload + magic-byte validation, helpers
-src/routes/public.js    GET /api/public/config (public settings, budget, gallery, counts)
+src/util.js             Rate limiter, image + audio upload with magic-byte validation, helpers
+src/routes/public.js    GET /api/public/config (public settings, budget, gallery, music playlist, counts)
 src/routes/employee.js  /api/auth/*, /api/me, /api/registration, /api/wishes, /api/assignment, /api/notifications
-src/routes/admin.js     /api/admin/* (employees, import, photos, settings, branding, gallery, draw,
+src/routes/admin.js     /api/admin/* (employees, import, photos, settings, branding, gallery, music, draw,
                         reminders, notifications, audit, admins, emergency override)
 public/                 index (landing), rules, login, app (employee dashboard), admin – each page = HTML shell + js/<page>.js
 public/js/common.js     Shared SS.* helpers: api(), esc(), theme, snow, lights, confetti, countdown, modal, toast
@@ -69,7 +69,7 @@ data/                   (gitignored) santa.db, secret.key, uploads/public, uploa
    `data/secret.key`. `receiver_tag` is an HMAC so SQLite can enforce one Santa per recipient.
 5. Notifications, email templates and audit-log `details` must **never** include wishes or assignments.
 6. Employee photos are served via `/media/photos/:file` with an access check (self, unwrapped Santa,
-   or admin). Branding/gallery images in `/uploads/` are public.
+   or admin). Branding/gallery images and background music in `/uploads/` are public.
 7. Enforce rules server-side. Hiding something in the UI is not access control.
 
 `test/e2e.test.js` asserts most of these – run `npm test` after touching auth, privacy, routes or draw.

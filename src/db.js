@@ -171,6 +171,15 @@ CREATE TABLE IF NOT EXISTS gallery (
   created_at TEXT NOT NULL DEFAULT ${NOW}
 );
 
+-- Background music playlist for the public/employee pages (files live in uploads/public)
+CREATE TABLE IF NOT EXISTS music_tracks (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  file       TEXT NOT NULL,
+  title      TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT ${NOW}
+);
+
 -- Emergency override windows that let a super admin view confidential data (always logged)
 CREATE TABLE IF NOT EXISTS overrides (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,

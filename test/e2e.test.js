@@ -201,6 +201,42 @@ test('full Secret Santa journey with privacy checks', async () => {
   assert.equal(brand.logo, null);
   assert.equal(brand.logo_email, null);
 
+  // --- background music: admin-only upload, audio validated by content, playlist order, public config
+  const MP3 = Buffer.concat([Buffer.from('ID3'), Buffer.from([3, 0, 0, 0, 0, 0, 0]), Buffer.alloc(64)]);
+  const OGG = Buffer.concat([Buffer.from('OggS'), Buffer.alloc(64)]);
+  const song = (buf, name, title) => {
+    const f = new FormData();
+    if (title) f.append('title', title);
+    f.append('audio', new Blob([buf], { type: 'audio/mpeg' }), name);
+    return f;
+  };
+  assert.equal((await anon.post('/api/admin/music', undefined, { form: song(MP3, 'a.mp3', 'Jingle') })).status, 401);
+  assert.equal((await admin.post('/api/admin/music', undefined, { form: song(PNG, 'fake.mp3', 'Fake') })).status, 400, 'non-audio rejected');
+  const s1 = await admin.post('/api/admin/music', undefined, { form: song(MP3, 'jingle.mp3', 'Jingle Bells 🎄') });
+  assert.equal(s1.status, 200, JSON.stringify(s1.data));
+  assert.match(s1.data.url, /^\/uploads\/music-[\w-]+\.mp3$/);
+  const s2 = await admin.post('/api/admin/music', undefined, { form: song(OGG, 'carol.ogg') });
+  assert.equal(s2.status, 200);
+  let cfgMusic = (await anon.get('/api/public/config')).data.music;
+  assert.deepEqual(cfgMusic.map((t) => t.title), ['Jingle Bells 🎄', 'Track 2']);
+  assert.equal((await anon.get(cfgMusic[0].url)).status, 200);
+  assert.equal((await admin.put('/api/admin/music/order', { ids: [s2.data.id] })).status, 400, 'order must list every track');
+  assert.equal((await admin.put('/api/admin/music/order', { ids: [s2.data.id, s1.data.id] })).status, 200);
+  assert.equal((await admin.put(`/api/admin/music/${s2.data.id}`, { title: 'Silent Night' })).status, 200);
+  cfgMusic = (await anon.get('/api/public/config')).data.music;
+  assert.deepEqual(cfgMusic.map((t) => t.title), ['Silent Night', 'Jingle Bells 🎄']);
+  assert.equal((await admin.put('/api/admin/settings', { music_volume: 0 })).status, 400);
+  assert.equal((await admin.put('/api/admin/settings', { music_volume: 40, music_shuffle: true })).status, 200);
+  assert.equal((await anon.get('/api/public/config')).data.settings.music_volume, 40);
+  assert.equal((await admin.del(`/api/admin/music/${s1.data.id}`)).status, 200);
+  let goneStatus = 0; // the file is removed asynchronously right after the response
+  for (let i = 0; i < 20 && goneStatus !== 404; i += 1) {
+    goneStatus = (await anon.get(cfgMusic[1].url)).status;
+    if (goneStatus !== 404) await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.equal(goneStatus, 404, 'deleted file is gone');
+  assert.equal((await anon.get('/api/public/config')).data.music.length, 1);
+
   // --- data at rest is encrypted
   const { DatabaseSync } = require('node:sqlite');
   const db = new DatabaseSync(path.join(DATA_DIR, 'santa.db'), { readOnly: true });

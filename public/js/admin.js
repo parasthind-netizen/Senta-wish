@@ -5,7 +5,7 @@
   const root = $('#root');
   const cfg = await SS.loadConfig().catch(() => null);
   const pub = cfg ? cfg.settings : {};
-  SS.initFx({ ...pub, lights_enabled: false, snow_density: 'light' });
+  SS.initFx({ ...pub, lights_enabled: false, snow_density: 'light', music_enabled: false });
 
   const A = { admin: null, settings: null, placeholders: [], employees: null, slots: 3, view: 'overview', empState: { q: '', filter: 'all', dept: '', selected: new Set() } };
   const isSuper = () => A.admin && A.admin.role === 'super_admin';
@@ -81,7 +81,7 @@
     ['People', [['employees', '👥', 'Employees'], ['import', '📥', 'Import & Photos'], ['participation', '📝', 'Registrations & Reminders']]],
     ['Secret Santa', [['draw', '🎲', 'Draw Engine'], ['notifications', '✉️', 'Notification Log']]],
     ['Customize', [['branding', '🎨', 'Branding & Text'], ['schedule', '📅', 'Dates & Budget'], ['content', '📜', 'Steps & Rules'],
-      ['messages', '💬', 'Employee Messages'], ['theme', '✨', 'Theme & Effects'], ['gallery', '🖼️', 'Photo Gallery'],
+      ['messages', '💬', 'Employee Messages'], ['theme', '✨', 'Theme & Effects'], ['gallery', '🖼️', 'Photo Gallery'], ['music', '🎵', 'Background Music'],
       ['email', '📧', 'Email & Templates'], ['security', '🔐', 'Access & Login']]],
     ['Governance', [['admins', '🧑‍💼', 'HR Admins'], ['audit', '📋', 'Audit Log'], ['override', '🚨', 'Emergency Override']]],
   ];
@@ -953,6 +953,79 @@
       try {
         if (e.target.closest('[data-save-cap]')) { await api(`/api/admin/gallery/${id}`, { method: 'PUT', body: { caption: $('[data-caption]', gi).value } }); SS.toast('Caption saved.', 'success'); }
         if (e.target.closest('[data-del]')) { if (await SS.confirm({ title: 'Delete photo?', message: 'It will be removed from the landing page.', confirmText: 'Delete', danger: true })) { await api(`/api/admin/gallery/${id}`, { method: 'DELETE' }); gi.remove(); } }
+      } catch (err) { toastErr(err); }
+    });
+  };
+
+  /* --------------------------------------------------------- music */
+  const MUSIC_FIELDS = [
+    { key: 'music_enabled', label: 'Play background music', type: 'bool', help: 'On the landing, rules, sign-in and employee dashboard pages (never in this admin panel).' },
+    { key: 'music_volume', label: 'Volume (%)', type: 'number', min: 1, max: 100, help: '30–40 is a pleasant background level.' },
+    { key: 'music_shuffle', label: 'Shuffle the playlist', type: 'bool', help: 'Off = play in the order below, then start again from the top.' },
+  ];
+  VIEWS.music = async (view) => {
+    await ensureSettings(true);
+    const { items } = await api('/api/admin/music');
+    view.innerHTML = `<p class="view-intro">Upload festive songs that play softly in the background while employees use the site.
+        Browsers only allow sound after a visitor clicks or taps the page, so the music starts on their first click if it can't start straight away.
+        Everyone gets a 🎵 button (bottom-left) to mute it, and the site remembers their choice.</p>
+      ${settingsPanel({ id: 'music', title: '🎚️ Playback', fields: MUSIC_FIELDS })}
+      <div class="panel"><div class="panel-head"><h2>🎵 Playlist (${items.length})</h2>
+        <label class="btn btn-primary btn-sm" style="cursor:pointer" id="mUpLabel">⬆ Add songs<input type="file" id="mUp" multiple
+          accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/wav,audio/x-wav,.mp3,.m4a,.ogg,.wav" class="sr-only"></label></div>
+        <p class="muted" style="margin-top:-6px;font-size:.88rem">MP3, M4A, OGG or WAV · up to 20 MB each (MP3 recommended). Only use music the company has the right to play – e.g. royalty-free tracks.</p>
+        ${items.length ? `<div class="track-list">${items.map((t, i) => `<div class="track" data-id="${t.id}">
+            <span class="track-no">${i + 1}</span>
+            <input value="${esc(t.title)}" data-title maxlength="120" aria-label="Song title">
+            <audio controls preload="none" src="${esc(t.url)}"></audio>
+            <div class="track-btns">
+              <button class="icon-btn" data-save-title title="Save title">💾</button>
+              <button class="icon-btn" data-move="-1" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
+              <button class="icon-btn" data-move="1" title="Move down" ${i === items.length - 1 ? 'disabled' : ''}>↓</button>
+              <button class="icon-btn" data-del title="Delete">🗑</button></div></div>`).join('')}</div>`
+          : '<div class="empty"><span class="big">🎶</span>No songs yet – add some and they will start playing on the site.</div>'}</div>`;
+    bindSettingsPanels(view, { music: MUSIC_FIELDS });
+
+    $('#mUp').addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files);
+      const label = $('#mUpLabel');
+      let added = 0;
+      for (const [i, f] of files.entries()) {
+        label.firstChild.textContent = `⏳ Uploading ${i + 1}/${files.length}…`;
+        const fd = new FormData();
+        fd.append('title', f.name.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' ').trim());
+        fd.append('audio', f);
+        try { await api('/api/admin/music', { method: 'POST', form: fd }); added += 1; } catch (err) { toastErr(err); }
+      }
+      if (added) SS.toast(`${added} song${added === 1 ? '' : 's'} added!`, 'success');
+      route();
+    });
+
+    view.addEventListener('click', async (e) => {
+      const row = e.target.closest('.track');
+      if (!row) return;
+      const id = Number(row.dataset.id);
+      try {
+        if (e.target.closest('[data-save-title]')) {
+          await api(`/api/admin/music/${id}`, { method: 'PUT', body: { title: $('[data-title]', row).value } });
+          SS.toast('Title saved.', 'success');
+        }
+        const mv = e.target.closest('[data-move]');
+        if (mv) {
+          const ids = $$('.track', view).map((r) => Number(r.dataset.id));
+          const from = ids.indexOf(id); const to = from + Number(mv.dataset.move);
+          if (to < 0 || to >= ids.length) return;
+          [ids[from], ids[to]] = [ids[to], ids[from]];
+          await api('/api/admin/music/order', { method: 'PUT', body: { ids } });
+          route();
+        }
+        if (e.target.closest('[data-del]')) {
+          const title = $('[data-title]', row).value;
+          if (await SS.confirm({ title: 'Delete song?', message: `“${title}” will be removed from the playlist.`, confirmText: 'Delete', danger: true })) {
+            await api(`/api/admin/music/${id}`, { method: 'DELETE' });
+            route();
+          }
+        }
       } catch (err) { toastErr(err); }
     });
   };

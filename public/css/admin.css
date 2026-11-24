@@ -103,6 +103,19 @@ table.t .actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap
 .image-slot .meta strong { color: #fff; display: block; }
 .image-slot .meta span { color: var(--muted); font-size: 0.86rem; }
 
+.track-list { display: flex; flex-direction: column; gap: 10px; }
+.track { display: grid; grid-template-columns: 34px minmax(160px, 1fr) minmax(220px, 300px) auto; gap: 12px; align-items: center;
+  padding: 10px 12px; border-radius: 14px; border: 1px solid var(--glass-border); background: rgba(0,0,0,.2); }
+.track .track-no { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 0.85rem;
+  color: var(--gold); border: 1px solid var(--gold-border); }
+.track input { padding: 8px 10px; font-size: 0.9rem; }
+.track audio { width: 100%; height: 36px; }
+.track .track-btns { display: flex; gap: 4px; }
+.track .icon-btn:disabled { opacity: 0.35; cursor: default; }
+@media (max-width: 900px) {
+  .track { grid-template-columns: 34px minmax(0, 1fr); }
+  .track audio, .track .track-btns { grid-column: 1 / -1; }
+}
 .gallery-admin { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
 .gallery-admin .gi { border-radius: 14px; overflow: hidden; border: 1px solid var(--glass-border); background: rgba(0,0,0,.2); }
 .gallery-admin .gi img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }

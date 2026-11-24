@@ -13,6 +13,7 @@ const auth = require('./src/auth');
 const privacy = require('./src/privacy');
 const { ensureAdmin } = require('./src/bootstrap');
 const { startScheduler } = require('./src/scheduler');
+const { MAX_AUDIO_MB } = require('./src/util');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -57,7 +58,7 @@ app.use('/api', require('./src/routes/employee'));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
 /* --------------------------------------------------------------------- files */
-// Branding + gallery images are public
+// Branding, gallery images and background music are public (express.static supports Range requests for audio)
 app.use('/uploads', express.static(PUBLIC_UPLOAD_DIR, { maxAge: '7d', index: false, dotfiles: 'deny' }));
 
 // Employee photos: admins, the employee themself, or the Santa who unwrapped them
@@ -90,7 +91,8 @@ app.use((err, req, res, _next) => {
   let message = err.expose !== false && status < 500 ? err.message : 'Something went wrong on the North Pole servers. Please try again.';
   if (err instanceof multer.MulterError) {
     status = 400;
-    message = err.code === 'LIMIT_FILE_SIZE' ? 'File is too large (max 5 MB).' : `Upload problem: ${err.message}`;
+    const maxMb = err.field === 'audio' ? MAX_AUDIO_MB : 5;
+    message = err.code === 'LIMIT_FILE_SIZE' ? `File is too large (max ${maxMb} MB).` : `Upload problem: ${err.message}`;
   } else if (err.type === 'entity.too.large') {
     status = 413; message = 'Request is too large.';
   } else if (err.type === 'entity.parse.failed') {
