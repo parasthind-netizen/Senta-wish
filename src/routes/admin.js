@@ -687,6 +687,33 @@ router.get('/email/sample', (req, res) => {
   res.json({ values: mailer.sampleVars(testPerson(req, isEmail(to) ? to : '')) });
 });
 
+/** Tag values for a preview / test, with the admin's own custom message when they typed one. */
+function testVars(person, message) {
+  const vars = mailer.sampleVars({ full_name: person.full_name });
+  const m = clean(message, 3000);
+  if (m) vars.message = m;
+  return vars;
+}
+
+// Exactly what a recipient will see. With an audience, the first person in it is the example recipient.
+router.post('/email/preview', (req, res) => {
+  const templates = settings.getSetting('templates');
+  const key = clean(req.body.template, 60);
+  if (!templates[key]) throw httpError(400, 'Unknown email template.');
+  let person;
+  let count = null;
+  if (req.body.audience) {
+    const list = audienceList(req.body.audience);
+    count = list.length;
+    person = list[0] || testPerson(req, '');
+  } else {
+    const to = clean(req.body.to, 254);
+    person = testPerson(req, isEmail(to) ? to : '');
+  }
+  const { subject, body } = mailer.renderTemplate(templates[key], testVars(person, req.body.message));
+  res.json({ subject, body, html: mailer.previewHtml(subject, body), recipient: person.full_name, count });
+});
+
 // template: 'connection' (plain check), a template key, or 'all' (one email per template)
 router.post('/email/test', async (req, res) => {
   const to = clean(req.body.to, 254) || req.admin.email;
@@ -699,8 +726,11 @@ router.post('/email/test', async (req, res) => {
   } else {
     const keys = choice === 'all' ? Object.keys(templates) : [choice];
     if (!keys.every((k) => templates[k])) throw httpError(400, 'Unknown email template.');
-    const vars = mailer.sampleVars(testPerson(req, to));
-    emails = keys.map((k) => ({ subject: `[Test] ${mailer.render(templates[k].subject, vars)}`, body: mailer.render(templates[k].body, vars) }));
+    const vars = testVars(testPerson(req, to), req.body.message);
+    emails = keys.map((k) => {
+      const m = mailer.renderTemplate(templates[k], vars);
+      return { subject: `[Test] ${m.subject}`, body: m.body };
+    });
   }
   let sent = 0;
   for (const m of emails) {

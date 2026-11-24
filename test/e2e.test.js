@@ -141,6 +141,23 @@ test('full Secret Santa journey with privacy checks', async () => {
   const otpReq = await new Client().post('/api/auth/otp/request', { identifier: PEOPLE[1].email });
   assert.equal(otpReq.status, 200, JSON.stringify(otpReq.data));
 
+  // --- reminder preview: exact email for the first person in the audience; tags + emoji codes work in a custom message
+  const message = 'Hi again {{first_name}} :santa::gift:';
+  const prev = await admin.post('/api/admin/email/preview', { template: 'custom_reminder', audience: 'registered', message });
+  assert.equal(prev.status, 200, JSON.stringify(prev.data));
+  assert.equal(prev.data.count, 6);
+  assert.equal(prev.data.recipient, 'Person A');
+  assert.match(prev.data.body, /Hi again Person 🎅🎁/);
+  assert.ok(prev.data.html.includes('Hi again Person 🎅🎁') && !prev.data.html.includes('cid:'));
+  assert.equal((await admin.post('/api/admin/email/preview', { template: 'nope' })).status, 400);
+  assert.equal((await admin.post('/api/admin/email/test', { template: 'custom_reminder', message })).status, 400, 'no SMTP in tests');
+  assert.equal((await admin.post('/api/admin/reminders', { audience: 'registered', message })).status, 200);
+  let note;
+  for (let i = 0; i < 40 && !note; i += 1) { // notifications go out in the background
+    note = (await clients.E101.get('/api/notifications')).data.notifications.find((n) => n.type === 'custom_reminder');
+    if (!note) await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.ok(note && note.body.includes('Hi again Person 🎅🎁'), 'the real reminder matches the preview');
   // --- admin never receives wish content
   const adminView = await admin.get('/api/admin/employees');
   assert.ok(!adminView.raw.includes('gift-1'), 'admin employee list must not contain wishes');

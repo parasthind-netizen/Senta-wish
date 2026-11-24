@@ -49,6 +49,9 @@ const DEFAULT_TEMPLATES = {
   },
 };
 
+/** Google script fonts offered for the email heading (email apps without web fonts use a similar installed script). */
+const EMAIL_SCRIPT_FONTS = ['Great Vibes', 'Parisienne', 'Alex Brush', 'Allura', 'Pinyon Script', 'Dancing Script', 'Satisfy', 'Cookie'];
+
 const DEFAULTS = {
   // Branding
   company_name: 'Techsara Solutions',
@@ -158,6 +161,13 @@ const DEFAULTS = {
   smtp_user: '',
   smtp_pass: '',
   smtp_from: 'Techsara Secret Santa <santa@techsarasolutions.com>',
+  // Email look – colours default to the Techsara logo (royal blue + gold)
+  email_bg_color: '#151a4b',
+  email_card_color: '#262f7e',
+  email_accent_color: '#e9b949',
+  email_heading_font: 'Great Vibes', // script font for the subject line
+  email_body_font: 'serif', // serif | script | sans
+  email_decorations: true, // pine branches in the top corners
   templates: DEFAULT_TEMPLATES,
 
   // Internal bookkeeping (not editable from the UI)
@@ -194,6 +204,9 @@ const SCHEMA = {
   reminder_hours_before: { type: 'int', min: 1, max: 720 },
   email_enabled: { type: 'bool' }, smtp_host: str(200), smtp_port: { type: 'int', min: 1, max: 65535 },
   smtp_secure: { type: 'bool' }, smtp_user: str(200), smtp_pass: { type: 'secret', max: 300 }, smtp_from: str(200),
+  email_bg_color: { type: 'color' }, email_card_color: { type: 'color' }, email_accent_color: { type: 'color' },
+  email_heading_font: { type: 'enum', values: EMAIL_SCRIPT_FONTS },
+  email_body_font: { type: 'enum', values: ['serif', 'script', 'sans'] }, email_decorations: { type: 'bool' },
   templates: { type: 'templates' },
 };
 
@@ -358,6 +371,6 @@ function formatDate(value) {
 }
 
 module.exports = {
-  DEFAULTS, DEFAULT_TEMPLATES, getSetting, setInternal, validate, saveMany, publicSettings,
+  DEFAULTS, DEFAULT_TEMPLATES, EMAIL_SCRIPT_FONTS, getSetting, setInternal, validate, saveMany, publicSettings,
   adminSettings, loadAll, emailDomainAllowed, allowedDomains, formatBudget, formatDate,
 };

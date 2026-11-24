@@ -61,6 +61,42 @@ function baseVars(employee, extra = {}) {
   };
 }
 
+/**
+ * Slack / Teams style emoji codes (":santa:") become real emoji, so text pasted from chat looks right in
+ * inboxes and in-app. Unknown codes are left as they are (the admin preview shows them).
+ */
+const EMOJI = {
+  santa: '🎅', mrs_claus: '🤶', mx_claus: '🧑‍🎄', christmas_tree: '🎄', gift: '🎁', sparkles: '✨', sparkle: '❇️', star: '⭐',
+  star2: '🌟', glowing_star: '🌟', dizzy: '💫', snowflake: '❄️', snowman: '⛄', snowman_with_snow: '☃️', bell: '🔔', bells: '🔔',
+  ribbon: '🎀', tada: '🎉', party_popper: '🎉', confetti_ball: '🎊', balloon: '🎈', fireworks: '🎆', sparkler: '🎇', candle: '🕯️',
+  deer: '🦌', elf: '🧝', cookie: '🍪', candy: '🍬', lollipop: '🍭', cake: '🍰', birthday: '🎂', coffee: '☕', champagne: '🍾',
+  clinking_glasses: '🥂', trophy: '🏆', medal: '🏅', crown: '👑', shushing_face: '🤫', shush: '🤫', zipper_mouth_face: '🤐',
+  smile: '😄', smiley: '😃', grinning: '😀', grin: '😁', blush: '😊', wink: '😉', joy: '😂', laughing: '😆', heart_eyes: '😍',
+  star_struck: '🤩', partying_face: '🥳', hugging_face: '🤗', hugs: '🤗', thinking_face: '🤔', thinking: '🤔', sunglasses: '😎',
+  innocent: '😇', relaxed: '☺️', slightly_smiling_face: '🙂', upside_down_face: '🙃', eyes: '👀', wave: '👋', clap: '👏',
+  raised_hands: '🙌', pray: '🙏', muscle: '💪', ok_hand: '👌', thumbsup: '👍', '+1': '👍', point_right: '👉', point_down: '👇',
+  heart: '❤️', red_heart: '❤️', hearts: '♥️', yellow_heart: '💛', green_heart: '💚', blue_heart: '💙', purple_heart: '💜',
+  orange_heart: '🧡', white_heart: '🤍', two_hearts: '💕', sparkling_heart: '💖', heartpulse: '💗', gift_heart: '💝',
+  fire: '🔥', '100': '💯', rocket: '🚀', zap: '⚡', boom: '💥', white_check_mark: '✅', heavy_check_mark: '✔️', x: '❌',
+  warning: '⚠️', calendar: '📆', date: '📅', spiral_calendar_pad: '🗓️', alarm_clock: '⏰', hourglass: '⌛',
+  hourglass_flowing_sand: '⏳', mega: '📣', loudspeaker: '📢', email: '📧', envelope: '✉️', incoming_envelope: '📨',
+  memo: '📝', pencil: '📝', lock: '🔒', key: '🔑', shopping_bags: '🛍️', moneybag: '💰', speech_balloon: '💬', pushpin: '📌',
+  round_pushpin: '📍', point_left: '👈', handshake: '🤝', rainbow: '🌈', sun_with_face: '🌞', crescent_moon: '🌙',
+};
+function emojify(text) {
+  return String(text).replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
+}
+
+/**
+ * Subject + body for a template. A custom message ({{message}}) may use the tags too
+ * (e.g. "Hi {{first_name}}"), and emoji codes are converted.
+ */
+function renderTemplate(tpl, vars) {
+  const v = { ...vars };
+  if (typeof v.message === 'string') v.message = render(emojify(v.message), { ...v, message: '' });
+  return { subject: emojify(render(tpl.subject, v)), body: emojify(render(tpl.body, v)) };
+}
+
 /** Tag values for test emails: the real settings (dates, budget, site link) plus a sample code and message. */
 function sampleVars(person) {
   return baseVars(person, {
@@ -109,44 +145,119 @@ function emailLogo(s = settings.loadAll()) {
 const uniqueMarker = (ref, bg) =>
   `<span style="color:${bg};opacity:0;font-size:1px;line-height:1px;mso-hide:all" aria-hidden="true">${ref}</span>`;
 
-function htmlEmail(subject, body, logo = null, ref = crypto.randomBytes(6).toString('hex')) {
+/* ---------- Email look: logo colours, script heading, pine-branch corners ---------- */
+const DECOR = { w: 120, h: 102 }; // display size of each corner branch (the PNGs are drawn at 2x)
+const DECOR_DIR = path.join(__dirname, '..', 'public', 'img');
+let decorCache = null;
+
+/** The two corner branches as inline attachments: [{ side, cid, content }] (empty if the files are missing). */
+function emailDecorations() {
+  if (!decorCache) {
+    try {
+      decorCache = ['left', 'right'].map((side) => ({
+        side, cid: `branch-${side}@techsara-secret-santa`, content: fs.readFileSync(path.join(DECOR_DIR, `email-branch-${side}.png`)),
+      }));
+    } catch { decorCache = []; }
+  }
+  return decorCache;
+}
+
+// Gmail and Outlook don't load web fonts, so each stack falls back to a similar font installed on the device
+const SCRIPT_FALLBACK = "'Segoe Script','Snell Roundhand','Apple Chancery','Brush Script MT',cursive";
+const SERIF = "'Cormorant Garamond',Georgia,'Times New Roman',serif";
+const SANS = "'Segoe UI',Arial,sans-serif";
+
+/** Darken (amount < 0) or lighten a #rrggbb colour. */
+function shade(hex, amount) {
+  const n = Number.parseInt(String(hex).slice(1), 16);
+  const ch = (v) => Math.round(Math.min(255, Math.max(0, amount < 0 ? v * (1 + amount) : v + (255 - v) * amount)));
+  return `#${[n >> 16, (n >> 8) & 255, n & 255].map((v) => ch(v).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function htmlEmail(subject, body, logo = null, ref = crypto.randomBytes(6).toString('hex'), decor = []) {
   const s = settings.loadAll();
-  const marker = uniqueMarker(ref, s.theme_midnight);
-  const paragraphs = escapeHtml(body)
-    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" style="color:#e9b949">$1</a>')
-    .split(/\n{2,}/).map((p) => `<p style="margin:0 0 14px;line-height:1.6">${p.replace(/\n/g, '<br>')}</p>`).join('');
-  const header = logo
-    ? `<img src="cid:${LOGO_CID}" width="${logo.width}" height="${logo.height}" alt="${escapeHtml(s.company_name)}" style="display:block;margin:0 auto;border:0;outline:none;text-decoration:none;width:${logo.width}px;height:${logo.height}px">
-        <div style="font-size:20px;margin-top:12px">🎄🎁🎅</div>`
+  const card = s.email_card_color || '#262f7e';
+  const bg = s.email_bg_color || '#151a4b';
+  const gold = s.email_accent_color || '#e9b949';
+  const cream = '#fbf3df';
+  const scriptFont = settings.EMAIL_SCRIPT_FONTS.includes(s.email_heading_font) ? s.email_heading_font : 'Great Vibes';
+  const script = `'${scriptFont}',${SCRIPT_FALLBACK}`;
+  const bodyStyle = {
+    serif: `font-family:${SERIF};font-size:18px;line-height:1.6`,
+    script: `font-family:${script};font-size:21px;line-height:1.5`,
+    sans: `font-family:${SANS};font-size:15px;line-height:1.6`,
+  }[s.email_body_font] || `font-family:${SERIF};font-size:18px;line-height:1.6`;
+  const marker = uniqueMarker(ref, card);
+
+  const paras = escapeHtml(body)
+    .replace(/(https?:\/\/[^\s<]+)/g, `<a href="$1" style="color:${gold}">$1</a>`)
+    .split(/\n{2,}/);
+  // "Hi Riya," on its own line is written in the script font, like a letter
+  const greeting = paras.length > 1 && /^(hi|hello|hey|dear)\b[^\n<]{0,60}$/i.test(paras[0].trim()) ? paras.shift() : '';
+  const paragraphs = paras.map((p) => `<p style="margin:0 0 14px">${p.replace(/\n/g, '<br>')}</p>`).join('');
+
+  const left = decor.find((d) => d.side === 'left');
+  const right = decor.find((d) => d.side === 'right');
+  const corner = (d, align) => `<td width="${d ? DECOR.w : 28}" valign="top" align="${align}" style="width:${d ? DECOR.w : 28}px;font-size:0;line-height:0">${d
+    ? `<img src="cid:${d.cid}" width="${DECOR.w}" height="${DECOR.h}" alt="" style="display:block;border:0;width:${DECOR.w}px;height:${DECOR.h}px">` : ''}</td>`;
+  // Just the logo; the emoji row is only a stand-in when no logo has been uploaded
+  const center = logo
+    ? `<img src="cid:${LOGO_CID}" width="${logo.width}" height="${logo.height}" alt="${escapeHtml(s.company_name)}" style="display:block;margin:0 auto;border:0;outline:none;text-decoration:none;width:${logo.width}px;height:${logo.height}px">`
     : '<div style="font-size:34px">🎄🎁🎅</div>';
-  return `<!doctype html><html><body style="margin:0;background:#06102a;font-family:Segoe UI,Arial,sans-serif;color:#f4f1ea">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#06102a;padding:32px 12px">
+  const rule = `<td width="36" style="width:36px"><div style="height:1px;line-height:1px;font-size:0;background:${gold}">&nbsp;</div></td>`;
+  const fonts = `https://fonts.googleapis.com/css2?family=${scriptFont.replace(/ /g, '+')}&family=Cormorant+Garamond:ital,wght@0,500;1,500&display=swap`;
+
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="${fonts}" rel="stylesheet"></head>
+  <body style="margin:0;background:${bg};font-family:${SANS};color:${cream}">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${bg};padding:32px 12px">
   <tr><td align="center">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:${s.theme_midnight};border:1px solid rgba(233,185,73,.35);border-radius:18px;overflow:hidden">
-      <tr><td style="background:linear-gradient(90deg,${s.theme_red},${s.theme_green});height:6px"></td></tr>
-      <tr><td style="padding:28px 32px 8px;text-align:center">
-        ${marker}${header}
-        <div style="font-size:13px;letter-spacing:3px;color:${s.theme_gold};margin-top:8px;text-transform:uppercase">${escapeHtml(s.event_title)}</div>
-        <h1 style="font-size:22px;margin:12px 0 0;color:#fff">${escapeHtml(subject)}</h1>
-      </td></tr>
-      <tr><td style="padding:20px 32px 8px;font-size:15px;color:#e8e4da">${paragraphs}</td></tr>
-      <tr><td style="padding:8px 32px 28px;text-align:center;font-size:12px;color:#a9b3cc;font-style:italic">${escapeHtml(s.slogan)}${marker}</td></tr>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:${card};background-image:linear-gradient(180deg,${card} 0%,${shade(card, -0.3)} 100%);border:2px solid ${gold};border-radius:18px;overflow:hidden">
+      <tr><td style="background:linear-gradient(90deg,${s.theme_red},${s.theme_green});height:6px;font-size:0;line-height:0">&nbsp;</td></tr>
+      <tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+        ${corner(left, 'left')}
+        <td valign="top" align="center" style="padding:26px 0 0">${marker}${center}</td>
+        ${corner(right, 'right')}
+      </tr></table></td></tr>
+      <tr><td align="center" style="padding:8px 24px 0">
+        <table role="presentation" cellpadding="0" cellspacing="0" align="center"><tr>${rule}
+          <td align="center" style="padding:0 12px;font-family:${SANS};font-size:13px;letter-spacing:3px;color:${gold};text-transform:uppercase">${escapeHtml(s.event_title)}</td>${rule}
+        </tr></table></td></tr>
+      <tr><td align="center" style="padding:12px 28px 0">
+        <h1 style="margin:0;font-family:${script};font-size:38px;font-weight:400;line-height:1.25;color:${cream}">${escapeHtml(subject)}</h1></td></tr>
+      <tr><td style="padding:22px 36px 6px;color:#eef0fa;${bodyStyle}">
+        ${greeting ? `<p style="margin:0 0 12px;font-family:${script};font-size:30px;line-height:1.3;color:${cream}">${greeting}</p>` : ''}${paragraphs}</td></tr>
+      <tr><td style="padding:6px 32px 28px;text-align:center;font-family:${SERIF};font-size:15px;color:#c9cdee;font-style:italic">${escapeHtml(s.slogan)}${marker}</td></tr>
     </table>
   </td></tr></table></body></html>`;
 }
 
+const decorFor = (s = settings.loadAll()) => (s.email_decorations === false ? [] : emailDecorations());
+
 /** The HTML part + inline attachments for an email (exported for tests). */
 function composeEmail(subject, text) {
   const logo = emailLogo();
+  const decor = decorFor();
   const ref = crypto.randomBytes(6).toString('hex');
   return {
-    html: htmlEmail(subject, text, logo, ref),
+    html: htmlEmail(subject, text, logo, ref, decor),
     // A unique entity id also stops Gmail from bundling separate notifications into one thread
     headers: { 'X-Entity-Ref-ID': ref },
-    attachments: logo
-      ? [{ filename: 'logo.png', content: logo.content, contentType: 'image/png', cid: LOGO_CID, contentDisposition: 'inline' }]
-      : [],
+    attachments: [
+      ...(logo ? [{ filename: 'logo.png', content: logo.content, contentType: 'image/png', cid: LOGO_CID, contentDisposition: 'inline' }] : []),
+      ...decor.map((d) => ({ filename: `branch-${d.side}.png`, content: d.content, contentType: 'image/png', cid: d.cid, contentDisposition: 'inline' })),
+    ],
   };
+}
+
+/** The email as the admin preview shows it: same HTML, with the inline images as data: URIs. */
+function previewHtml(subject, text) {
+  const logo = emailLogo();
+  const decor = decorFor();
+  let html = htmlEmail(subject, text, logo, undefined, decor);
+  const images = [...(logo ? [{ cid: LOGO_CID, content: logo.content }] : []), ...decor];
+  for (const img of images) html = html.split(`cid:${img.cid}`).join(`data:image/png;base64,${img.content.toString('base64')}`);
+  return html;
 }
 
 async function sendMail(to, subject, text) {
@@ -168,9 +279,7 @@ async function sendMail(to, subject, text) {
 async function notify(employee, type, extraVars = {}) {
   const tpl = settings.getSetting('templates')[type];
   if (!tpl) throw new Error(`Unknown template ${type}`);
-  const vars = baseVars(employee, extraVars);
-  const title = render(tpl.subject, vars);
-  const body = render(tpl.body, vars);
+  const { subject: title, body } = renderTemplate(tpl, baseVars(employee, extraVars));
   const res = run(
     'INSERT INTO notifications (employee_id, type, title, body, email_status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
     employee.id, type, title, body, 'pending', nowIso(),
@@ -195,9 +304,7 @@ function notifyMany(employees, type, extraVars = {}) {
 /** OTP email – not stored as an in-app notification. Logged to console when SMTP is off (local dev). */
 async function sendOtp(employee, code) {
   const tpl = settings.getSetting('templates').otp;
-  const vars = baseVars(employee, { code });
-  const subject = render(tpl.subject, vars);
-  const body = render(tpl.body, vars);
+  const { subject, body } = renderTemplate(tpl, baseVars(employee, { code }));
   const result = await sendMail(employee.email, subject, body);
   if (result.status !== 'sent') {
     if (process.env.NODE_ENV === 'production') {
@@ -221,5 +328,5 @@ function unreadCount(employeeId) {
 }
 
 module.exports = {
-  notify, notifyMany, sendOtp, sendMail, composeEmail, sampleVars, smtpConfigured, listForEmployee, unreadCount, render, baseVars,
+  notify, notifyMany, sendOtp, sendMail, composeEmail, sampleVars, renderTemplate, previewHtml, emojify, smtpConfigured, listForEmployee, unreadCount, render, baseVars,
 };

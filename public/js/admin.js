@@ -593,6 +593,27 @@
   };
 
   /* -------------------------------------------------- participation */
+  /** Emails exactly as recipients get them, rendered in a sandboxed frame (no scripts can run in it). */
+  function showEmailPreview(items, note = '') {
+    const unknownCodes = [...new Set(items.flatMap((p) => `${p.subject} ${p.body}`.match(/:[a-z0-9_+-]+:/gi) || []))];
+    SS.modal({
+      title: '👁 Email preview',
+      wide: true,
+      html: `${note ? `<p class="muted" style="margin-top:-6px">${note}</p>` : ''}
+        ${unknownCodes.length ? `<div class="alert warn"><div>⚠️ These emoji codes aren’t recognised and will show as plain text: <strong>${esc(unknownCodes.join(' '))}</strong> – replace them with real emoji (on Windows press Win + . to pick one).</div></div>` : ''}
+        ${items.map((p, i) => `<div class="mail-preview">
+          ${p.label ? `<h4>${esc(p.label)}</h4>` : ''}
+          <div class="mail-meta"><div><span>To</span>${esc(p.recipient)}${p.count > 1 ? ` <em class="muted">– example; all ${p.count} people get it with their own name</em>` : ''}</div>
+            <div><span>Subject</span><strong>${esc(p.subject)}</strong></div></div>
+          <iframe class="mail-frame" sandbox="allow-same-origin" data-i="${i}" title="Email preview"></iframe></div>`).join('')}
+        <div class="modal-actions"><button class="btn btn-ghost btn-sm" data-close>Close</button></div>`,
+      onOpen: (m) => $$('.mail-frame', m).forEach((f) => {
+        f.addEventListener('load', () => { try { f.style.height = `${f.contentDocument.documentElement.scrollHeight + 4}px`; } catch { /* keep the default height */ } });
+        f.srcdoc = items[Number(f.dataset.i)].html;
+      }),
+    });
+  }
+
   const AUDIENCES = [
     ['pending_any', 'Anyone not finished (not registered or wishes incomplete)'], ['not_registered', 'Not registered yet'],
     ['no_account', 'Account not activated'], ['incomplete_wishes', 'Registered but wishes incomplete'], ['registered', 'All registered participants'],
@@ -622,8 +643,10 @@
           <div class="field"><label for="aud">Who should receive it?</label>
             <select id="aud">${AUDIENCES.map(([k, l]) => `<option value="${k}">${esc(l)} (${aud.counts[k]})</option>`).join('')}</select></div>
           <div class="field"><label for="msg">Custom message <span class="muted">(optional – leave empty to use the “Deadline reminder” template)</span></label>
-            <textarea id="msg" rows="4" maxlength="3000" placeholder="e.g. Only 2 days left to add your wishes – the elves are waiting! 🎄"></textarea></div>
-          <div class="form-actions"><button class="btn btn-primary btn-sm" id="send">📨 Send reminder</button></div>
+            <div class="placeholder-chips">${A.placeholders.filter((p) => p !== 'message' && p !== 'code').map((p) => `<code data-tag="{{${esc(p)}}}" title="Click to insert">{{${esc(p)}}}</code>`).join('')}</div>
+            <textarea id="msg" rows="7" maxlength="3000" placeholder="e.g. Only 2 days left to add your wishes – the elves are waiting! 🎄"></textarea>
+            <p class="muted" style="font-size:.82rem;margin:6px 0 0">Click a tag to insert it – {{first_name}} becomes each person’s own first name. Your message goes inside the “Custom reminder wrapper” template (Email &amp; Templates), which adds the subject, greeting and site link. Use <strong>Preview</strong> to see the exact email.</p></div>
+          <div class="form-actions"><button class="btn btn-ghost btn-sm" id="preview">👁 Preview</button><button class="btn btn-ghost btn-sm" id="testMe">📨 Send test to me</button><button class="btn btn-primary btn-sm" id="send">📨 Send reminder</button></div>
         </div>
       </div>
       <div class="grid grid-2" style="margin-top:18px">
@@ -637,6 +660,27 @@
         SS.toast(e.target.checked ? 'Registrations are open! 🎄' : 'Registrations closed.', 'success');
         route();
       } catch (err) { e.target.checked = !e.target.checked; toastErr(err); }
+    });
+    const reminderTpl = () => ($('#msg').value.trim() ? 'custom_reminder' : 'deadline_reminder');
+    $$('[data-tag]', view).forEach((c) => c.addEventListener('click', () => {
+      const area = $('#msg');
+      const pos = area.selectionStart ?? area.value.length;
+      area.value = area.value.slice(0, pos) + c.dataset.tag + area.value.slice(area.selectionEnd ?? pos);
+      area.focus();
+    }));
+    $('#preview').addEventListener('click', async (e) => {
+      SS.busy(e.target, true);
+      try {
+        const p = await api('/api/admin/email/preview', { method: 'POST', body: { template: reminderTpl(), message: $('#msg').value, audience: $('#aud').value } });
+        showEmailPreview([p], aud.emailConfigured ? '' : 'Email isn’t set up yet, so this would only appear as an in-app notification.');
+      } catch (err) { toastErr(err); } finally { SS.busy(e.target, false); }
+    });
+    $('#testMe').addEventListener('click', async (e) => {
+      SS.busy(e.target, true, ' Sending…');
+      try {
+        const r = await api('/api/admin/email/test', { method: 'POST', body: { template: reminderTpl(), message: $('#msg').value } });
+        SS.toast(`Test sent to ${r.to} – check your inbox.`, 'success');
+      } catch (err) { toastErr(err); } finally { SS.busy(e.target, false); }
     });
     $('#send').addEventListener('click', async (e) => {
       const audience = $('#aud').value;
@@ -1054,6 +1098,15 @@
     { key: 'auto_reminder_enabled', label: 'Automatic deadline reminder', type: 'bool', help: 'Sends the “Deadline reminder” once to anyone not finished, shortly before the registration deadline.' },
     { key: 'reminder_hours_before', label: 'Hours before the deadline', type: 'number', min: 1, max: 720 },
   ];
+  const EMAIL_SCRIPT_FONTS = ['Great Vibes', 'Parisienne', 'Alex Brush', 'Allura', 'Pinyon Script', 'Dancing Script', 'Satisfy', 'Cookie'];
+  const LOOK_FIELDS = [
+    { key: 'email_card_color', label: 'Card colour', type: 'color', help: 'Default #262f7e – the logo blue.' },
+    { key: 'email_bg_color', label: 'Background around the card', type: 'color' },
+    { key: 'email_accent_color', label: 'Accent – border, lines, links', type: 'color', help: 'Default #e9b949 – the logo gold.' },
+    { key: 'email_heading_font', label: 'Subject line font', type: 'select', options: EMAIL_SCRIPT_FONTS.map((f) => [f, f]) },
+    { key: 'email_body_font', label: 'Message font', type: 'select', options: [['serif', 'Elegant serif (Cormorant Garamond)'], ['script', 'Script – same as the subject line'], ['sans', 'Clean (Segoe UI)']], help: 'The “Hi Name,” greeting is always in the script font.' },
+    { key: 'email_decorations', label: 'Pine branches in the top corners', type: 'bool' },
+  ];
   const TEMPLATE_NAMES = {
     registration_confirmation: 'Registration confirmation', wishlist_submitted: 'Wish list submitted', deadline_reminder: 'Deadline reminder',
     draw_completed: 'Draw completed (boxes sealed)', assignment_available: 'Assignment available', custom_reminder: 'Custom reminder wrapper', otp: 'One-time code (OTP)',
@@ -1070,7 +1123,10 @@
             <option value="all">📬 All templates (${Object.keys(TEMPLATE_NAMES).length} emails)</option></select></div>
           <div class="field"><label for="testTo">Send to</label><input type="email" id="testTo" placeholder="${esc(A.admin.email)}"></div>
           <div id="testTags"></div>
-          <div class="form-actions"><button class="btn btn-primary btn-sm" id="testBtn">📨 Send test</button></div></div>
+          <div class="form-actions"><button class="btn btn-ghost btn-sm" id="testPreview">👁 Preview</button><button class="btn btn-primary btn-sm" id="testBtn">📨 Send test</button></div></div>
+        ${settingsPanel({ id: 'look', title: '🎨 Email look', fields: LOOK_FIELDS, saveLabel: 'Save look',
+          intro: 'Colours match the Techsara logo. Gmail and Outlook don’t load custom fonts, so they show a similar script font installed on the phone or computer; Apple Mail and iPhone Mail show the exact font.',
+          extra: '<div class="form-actions" style="justify-content:flex-start;margin-bottom:-8px"><button class="btn btn-ghost btn-sm" id="lookPreview">👁 Preview the look</button></div>' })}
         ${settingsPanel({ id: 'auto', title: '⏰ Automatic reminders', fields: AUTO_FIELDS })}</div>
       <div class="panel" id="tplPanel"><div class="panel-head"><h2>✍️ Notification templates</h2><button class="btn btn-ghost btn-xs" id="tplReset">Restore defaults</button></div>
         <p class="muted" style="font-size:.88rem;margin-top:-6px">Click a placeholder to copy it. Templates must never include wish or assignment details – they go to inboxes.</p>
@@ -1079,7 +1135,14 @@
         <div class="field"><label for="tplSubj">Subject</label><input id="tplSubj" maxlength="200"></div>
         <div class="field"><label for="tplBody">Message</label><textarea id="tplBody" rows="11" maxlength="5000"></textarea></div>
         <div class="form-actions"><button class="btn btn-primary btn-sm" id="tplSave">💾 Save template</button></div></div></div>`;
-    bindSettingsPanels(view, { smtp: SMTP_FIELDS, auto: AUTO_FIELDS });
+    bindSettingsPanels(view, { smtp: SMTP_FIELDS, auto: AUTO_FIELDS, look: LOOK_FIELDS });
+    $('#lookPreview').addEventListener('click', async (e) => {
+      SS.busy(e.target, true);
+      try {
+        const p = await api('/api/admin/email/preview', { method: 'POST', body: { template: 'wishlist_submitted' } });
+        showEmailPreview([p], 'Shows the saved look – press “Save look” first if you changed something.');
+      } catch (err) { toastErr(err); } finally { SS.busy(e.target, false); }
+    });
     const load = () => { const x = t[$('#tplSel').value]; $('#tplSubj').value = x.subject; $('#tplBody').value = x.body; };
     load();
     $('#tplSel').addEventListener('change', load);
@@ -1107,6 +1170,7 @@
       .map((m) => m.replace(/[{}\s]/g, '')))];
     const paintTags = () => {
       const v = $('#testTpl').value;
+      $('#testPreview').disabled = v === 'connection';
       if (v === 'connection') { $('#testTags').innerHTML = '<p class="muted" style="font-size:.85rem">A short plain email that checks the SMTP settings work.</p>'; return; }
       const tags = tagsIn(v === 'all' ? Object.keys(TEMPLATE_NAMES) : [v]);
       $('#testTags').innerHTML = `<p class="muted" style="font-size:.85rem;margin:0 0 8px">Looks exactly like the real email (the <strong>saved</strong> template${v === 'all' ? 's' : ''}), with “[Test]” before the subject. The name is the employee’s if you send to their email, otherwise yours. Tags used:</p>
@@ -1121,6 +1185,15 @@
     $('#testTpl').addEventListener('change', paintTags);
     $('#testTo').addEventListener('change', loadSample);
     loadSample();
+    $('#testPreview').addEventListener('click', async (e) => {
+      const v = $('#testTpl').value;
+      const keys = v === 'all' ? Object.keys(TEMPLATE_NAMES) : [v];
+      SS.busy(e.target, true);
+      try {
+        const list = await Promise.all(keys.map((k) => api('/api/admin/email/preview', { method: 'POST', body: { template: k, to: $('#testTo').value.trim() } })));
+        showEmailPreview(list.map((p, i) => ({ ...p, label: keys.length > 1 ? TEMPLATE_NAMES[keys[i]] : '' })));
+      } catch (err) { toastErr(err); } finally { SS.busy(e.target, false); }
+    });
     $('#testBtn').addEventListener('click', async (e) => {
       SS.busy(e.target, true, ' Sending…');
       try {
